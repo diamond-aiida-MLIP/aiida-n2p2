@@ -12,3 +12,9 @@ python = "^3.12"
 [build-system]
 requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.plugins."aiida.calculations"]
+"n2p2.calculations" = "aiida_n2p2.calculations:nnpScaling"
+
+[tool.poetry.plugins."aiida.parsers"]
+"n2p2.parsers" = "aiida_n2p2.parsers:nnpScaleParser"
