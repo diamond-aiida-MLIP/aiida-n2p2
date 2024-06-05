@@ -14,7 +14,11 @@ requires = ["poetry-core"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.plugins."aiida.calculations"]
-"n2p2.calculations" = "aiida_n2p2.calculations:nnpScaling"
+"n2p2.scale" = "aiida_n2p2.calculations.scaling:nnpScaling"
+"n2p2.train" = "aiida_n2p2.calculations.train:nnpTraining"
+"n2p2.predict"= "aiida_n2p2.calculations.predict:nnpPredict"
 
 [tool.poetry.plugins."aiida.parsers"]
-"n2p2.parsers" = "aiida_n2p2.parsers:nnpScaleParser"
+"n2p2.scale" = "aiida_n2p2.parsers.scaling:nnpScaleParser"
+"n2p2.train" = "aiida_n2p2.parsers.train:nnpTrainParser"
+"n2p2.predict" = "aiida_n2p2.parsers.predict:nnpPredictParser"
