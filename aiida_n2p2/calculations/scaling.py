@@ -1,25 +1,23 @@
 """
-Calculations provided by aiida_n2p2.
-
-Register calculations via the "aiida.calculations" entry point in setup.json.
+nnp-scale  provided by aiida-n2p2.
 """
 
 from aiida.common import datastructures
-from aiida.engine import CalcJob
-from aiida.orm import SinglefileData,Int
-
-
-
+from aiida.engine import CalcJob, CalcJobProcessSpec
+from aiida.common.folders import Folder
+from aiida.orm import SinglefileData, Int, Code
 
 
 class nnpScaling(CalcJob):
-    """
-    AiiDA calculation plugin wrapping the scaling  function.
-    """
+    """AiiDA calculation interface for nnp-scaling executable in n2p2 package."""
 
     @classmethod
-    def define(cls, spec):
-        """Define inputs and outputs of the calculation."""
+    def define(cls, spec: CalcJobProcessSpec) -> None:
+        """Method to define inputs, outputs and exitcodes.
+
+        Args:
+            spec (CalcJobProcessSpec): Spec
+        """
         super().define(spec)
 
         # set default values for AiiDA options
@@ -27,25 +25,31 @@ class nnpScaling(CalcJob):
             "num_machines": 1,
             "num_mpiprocs_per_machine": 1,
         }
-        spec.inputs["metadata"]["options"]["parser_name"].default = "n2p2.scale"
 
-        # new ports
+        spec.input("metadata.options.parser_name", valid_type=str, default="n2p2.scale")
+
         spec.input(
-            "metadata.options.output_filename", valid_type=str, default='scale.log'
+            "metadata.options.output_filename",
+            valid_type=str,
+            default="scale.log",
         )
 
-        spec.input("nbin",valid_type=Int)
-      
-        
+        spec.input("code", valid_type=Code, help="Executable for nnp-scaling")
+
         spec.input(
-            "inputData", valid_type=SinglefileData, help="Training set"
+            "nbin",
+            valid_type=Int,
+            default=lambda: Int(500),
+            help="Number of bins for histogram",
         )
+
+        spec.input("inputData", valid_type=SinglefileData, help="Training data set")
         spec.input(
-            "inputNN", valid_type=SinglefileData, help="Test set"
+            "inputNN",
+            valid_type=SinglefileData,
+            help="Neural network architecture and hyper params",
         )
-        spec.output(
-            "scale", valid_type=SinglefileData, help="Scaling data"
-        )
+        spec.output("scale", valid_type=SinglefileData, help="File with scaling data")
 
         spec.exit_code(
             300,
@@ -53,13 +57,14 @@ class nnpScaling(CalcJob):
             message="Calculation did not produce all expected output files.",
         )
 
-    def prepare_for_submission(self, folder):
-        """
-        Create input files.
+    def prepare_for_submission(self, folder: Folder) -> datastructures.CalcInfo:
+        """Describes  the procedure for execution of `CalcJob`.
 
-        :param folder: an `aiida.common.folders.Folder` where the plugin should temporarily place all files
-            needed by the calculation.
-        :return: `aiida.common.datastructures.CalcInfo` instance
+        Args:
+            folder (Folder): Folder to temporarily write files on disk
+
+        Returns:
+            datastructures.CalcInfo: An instance of calcinfo to be passed to execution manager.
         """
         codeinfo = datastructures.CodeInfo()
         codeinfo.cmdline_params = [self.inputs.nbin.value]
@@ -81,6 +86,9 @@ class nnpScaling(CalcJob):
                 self.inputs.inputNN.filename,
             ),
         ]
-        calcinfo.retrieve_list = ['scaling.data']
+        calcinfo.retrieve_list = [
+            "scaling.data",
+            self.metadata.options.output_filename,
+        ]
 
         return calcinfo
