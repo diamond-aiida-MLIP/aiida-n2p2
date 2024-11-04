@@ -1,12 +1,12 @@
 """
-Parsers provided by aiida_n2p2.
+Parser for nnp-scaling functionality in AiiDA-n2p2
 
-Register parsers via the "aiida.parsers" entry point in setup.json.
+The method only parses the scaling.data file and ignores other files.
 """
 
 from aiida.common import exceptions
 from aiida.engine import ExitCode
-from aiida.orm import SinglefileData
+from aiida.orm import SinglefileData, CalcJobNode
 from aiida.parsers.parser import Parser
 from aiida.plugins import CalculationFactory
 
@@ -18,26 +18,28 @@ class nnpScaleParser(Parser):
     Parser class for parsing output of calculation.
     """
 
-    def __init__(self, node):
-        """
-        Initialize Parser instance
+    def __init__(self, node: CalcJobNode):
+        """Initialize the parser and check if node is compatable
 
-        Checks that the ProcessNode being passed was produced by a n2p2Calculation.
+        Args:
+            node (CalcJobNode): The calculation node to be parsed
 
-        :param node: ProcessNode of calculation
-        :param type node: :class:`aiida.orm.nodes.process.process.ProcessNode`
+        Raises:
+            exceptions.ParsingError: Check correct parser is used
         """
         super().__init__(node)
-        if not issubclass(node.process_class, n2p2Calculation):
+        if not issubclass(node.process_class, n2p2Calculation):  # type: ignore[arg-type]
             raise exceptions.ParsingError("Can only parse n2p2Calculation")
 
-    def parse(self, **kwargs):
-        """
-        Parse outputs, store results in database.
+    def parse(self, **kwargs) -> ExitCode:
+        """Parse outputs produced by n2p2.
 
-        :returns: an exit code, if parsing fails (or nothing if parsing succeeds)
+        Currently it only parses the scaling.data file.
+
+        Returns:
+            ExitCode: non-zero exit code, if parsing fails
         """
-        output_filename = 'scaling.data'
+        output_filename = "scaling.data"
 
         # Check that folder content is as expected
         files_retrieved = self.retrieved.list_object_names()
