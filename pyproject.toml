@@ -22,3 +22,9 @@ build-backend = "poetry.core.masonry.api"
 "n2p2.scale" = "aiida_n2p2.parsers.scaling:nnpScaleParser"
 "n2p2.train" = "aiida_n2p2.parsers.train:nnpTrainParser"
 "n2p2.predict" = "aiida_n2p2.parsers.predict:nnpPredictParser"
+
+[tool.poetry.plugins."aiida.workflows"]
+"n2p2.make_potential" = "aiida_n2p2.workflows.make_potential:MakeNNPWorkchain"
+
+[tool.ruff]
+line-length = 80
