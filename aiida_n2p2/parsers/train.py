@@ -39,19 +39,17 @@ class nnpTrainParser(Parser):
 
         :returns: an exit code, if parsing fails (or nothing if parsing succeeds)
         """
-        
 
         # Check that folder content is as expected
-        files_retrieved = self.retrieved.list_object_names()
-        files_expected = ['learning-curve.out','weight*.out']
+        # files_retrieved = self.retrieved.list_object_names()
+        # files_expected = ["learning-curve.out", "weight*.out"]
 
         # Check that files expected are received
-        
+
         # Find the best epoch
 
-        #find the best weights
-        output_filename='weights.010.000010.out'
-
+        # find the best weights
+        output_filename = "weights.013.000200.out"
 
         # add the correct weight file
         self.logger.info(f"Parsing '{output_filename}'")
@@ -60,7 +58,7 @@ class nnpTrainParser(Parser):
         self.out("weights", output_node)
 
         return ExitCode(0)
-    
+
     @staticmethod
     def parseLearningCurve(learningcurveFile):
         """_summary_
@@ -68,15 +66,18 @@ class nnpTrainParser(Parser):
         Returns:
             _type_: _description_
         """
-        
+
         # Read the first two columns of the file
-        data = np.genfromtxt(learningcurveFile, skip_header=13, dtype=[('epoch', int), ('value', float)])
-        
+        data = np.genfromtxt(
+            learningcurveFile,
+            comments="#",
+            dtype=[("epoch", int), ("value", float)],
+        )
+
         # Find the index of the minimum value in the second column
-        min_index = np.argmin(data['value'])
+        min_index = np.argmin(data["value"])
 
         # Get the corresponding value from the first column
-        bestEpoch = data['epoch'][min_index]
+        bestEpoch = data["epoch"][min_index]
 
         return bestEpoch
-
