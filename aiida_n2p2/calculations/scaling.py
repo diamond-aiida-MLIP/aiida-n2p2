@@ -23,7 +23,7 @@ class nnpScaling(CalcJob):
         # set default values for AiiDA options
         spec.inputs["metadata"]["options"]["resources"].default = {
             "num_machines": 1,
-            "num_mpiprocs_per_machine": 1,
+            "num_mpiprocs_per_machine": 8,
         }
 
         spec.input("metadata.options.parser_name", valid_type=str, default="n2p2.scale")
