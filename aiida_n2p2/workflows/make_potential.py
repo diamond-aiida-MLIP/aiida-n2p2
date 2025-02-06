@@ -14,11 +14,18 @@ class MakeNNPWorkchain(WorkChain):
         spec.input("nbin", valid_type=Int)
         spec.input("inputData", valid_type=SinglefileData, help="Training set")
         spec.input("inputNN", valid_type=SinglefileData, help="Test set")
-        spec.input("trainCode", valid_type=Code, help="Code for the training step")
+        spec.input(
+            "atomicNumber", valid_type=Int, help="Atomic number of the element"
+        )
+        spec.input(
+            "trainCode", valid_type=Code, help="Code for the training step"
+        )
 
         spec.input("lammpsCode", valid_type=Code, help="Code for LAMMPS")
         spec.input(
-            "lammpsScript", valid_type=SinglefileData, help="Script to run LAMMPS"
+            "lammpsScript",
+            valid_type=SinglefileData,
+            help="Script to run LAMMPS",
         )
         spec.input(
             "lammpsData",
@@ -32,8 +39,12 @@ class MakeNNPWorkchain(WorkChain):
         spec.output("scale", valid_type=SinglefileData)
 
         # Define exit codes for error handling
-        spec.exit_code(201, "ERROR_SCALING_FAILED", message="Scaling step failed.")
-        spec.exit_code(202, "ERROR_TRAINING_FAILED", message="Training step failed.")
+        spec.exit_code(
+            201, "ERROR_SCALING_FAILED", message="Scaling step failed."
+        )
+        spec.exit_code(
+            202, "ERROR_TRAINING_FAILED", message="Training step failed."
+        )
         spec.exit_code(
             203, "ERROR_VALIDATION_FAILED", message="Prediction step failed."
         )
@@ -49,7 +60,10 @@ class MakeNNPWorkchain(WorkChain):
             "metadata": {
                 "label": "Scaling Step",
                 "options": {
-                    "resources": {"num_machines": 1, "num_mpiprocs_per_machine": 8},
+                    "resources": {
+                        "num_machines": 1,
+                        "num_mpiprocs_per_machine": 8,
+                    },
                     "withmpi": True,
                 },
             },
@@ -71,10 +85,14 @@ class MakeNNPWorkchain(WorkChain):
 
         inputs = {
             "code": self.inputs.trainCode,
+            "atomicNumber": self.inputs.atomicNumber,
             "inputData": self.inputs.inputData,
             "inputNN": self.inputs.inputNN,
             "inputScale": scaledData,
-            "metadata": {"label": "Training Step", "options": {"withmpi": False}},
+            "metadata": {
+                "label": "Training Step",
+                "options": {"withmpi": False},
+            },
         }
         self.report("Submitting Training calculation...")
         future = self.submit(nnpTraining, **inputs)
@@ -86,6 +104,8 @@ class MakeNNPWorkchain(WorkChain):
         """
         training_calc = self.ctx.training_calc
         scaling_calc = self.ctx.scaling_calc
+        atomic_number = self.inputs.atomicNumber.value
+        weights_filename = f"weights.{atomic_number:3d}.data"
 
         if not training_calc.is_finished_ok:
             self.report("Training step failed.")
@@ -109,12 +129,15 @@ class MakeNNPWorkchain(WorkChain):
                     "data": "IN.data",
                     "inputnn": "input.nn",
                     "scale": "scaling.data",
-                    "weight": "weights.013.data",
+                    "weight": weights_filename,
                 }
             ),
             "metadata": {
                 "options": {
-                    "resources": {"num_machines": 1, "num_mpiprocs_per_machine": 8},
+                    "resources": {
+                        "num_machines": 1,
+                        "num_mpiprocs_per_machine": 8,
+                    },
                     "withmpi": True,
                 }
             },
