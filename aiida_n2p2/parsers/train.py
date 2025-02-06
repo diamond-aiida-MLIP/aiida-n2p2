@@ -47,13 +47,23 @@ class nnpTrainParser(Parser):
         # Check that files expected are received
 
         # Find the best epoch
+        # Parse the learning curve to find the best epoch
+        best_epoch = None
+        try:
+            with self.retrieved.open("learning-curve.out", "r") as handle:
+                best_epoch = self.parseLearningCurve(handle)
+        except Exception as e:
+            self.logger.error(f"Failed to parse learning curve: {e}")
+            return ExitCode(401, f"Failed to parse learning curve: {str(e)}")
 
         # find the best weights
-        output_filename = "weights.013.000200.out"
+        atomic_number = self.node.inputs.atomicNumber.value
+        best_weight_file = f"weights.{atomic_number:03d}.{best_epoch:06d}.out"
 
         # add the correct weight file
-        self.logger.info(f"Parsing '{output_filename}'")
-        with self.retrieved.open(output_filename, "rb") as handle:
+        self.logger.info(f"Parsing '{best_weight_file}'")
+        print("Best weights:", best_weight_file)
+        with self.retrieved.open(best_weight_file, "rb") as handle:
             output_node = SinglefileData(file=handle)
         self.out("weights", output_node)
 
@@ -61,16 +71,17 @@ class nnpTrainParser(Parser):
 
     @staticmethod
     def parseLearningCurve(learningcurveFile):
-        """_summary_
+        """Function to select the optimal epoch from the learning-curve file.
+        The lowest test-set error epoch is chosen
 
-        Returns:
-            _type_: _description_
+        :param learningcurveFile: n2p2 learning curve file.
         """
 
         # Read the first two columns of the file
         data = np.genfromtxt(
             learningcurveFile,
             comments="#",
+            usecols=(0, 2),
             dtype=[("epoch", int), ("value", float)],
         )
 

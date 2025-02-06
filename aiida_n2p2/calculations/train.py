@@ -4,7 +4,7 @@ Plugin for nnp-train in AiiDA-n2p2
 
 from aiida.common import datastructures
 from aiida.engine import CalcJob, CalcJobProcessSpec
-from aiida.orm import SinglefileData
+from aiida.orm import SinglefileData, Int
 
 
 class nnpTraining(CalcJob):
@@ -34,7 +34,9 @@ class nnpTraining(CalcJob):
             valid_type=str,
             default="train.log",
         )
-
+        spec.input(
+            "atomicNumber", valid_type=Int, help="Atomic number of the element"
+        )
         spec.input("inputData", valid_type=SinglefileData, help="Training set")
         spec.input(
             "inputNN",
