@@ -105,7 +105,7 @@ class MakeNNPWorkchain(WorkChain):
         training_calc = self.ctx.training_calc
         scaling_calc = self.ctx.scaling_calc
         atomic_number = self.inputs.atomicNumber.value
-        weights_filename = f"weights.{atomic_number:3d}.data"
+        weights_filename = f"weights.{atomic_number:03d}.data"
 
         if not training_calc.is_finished_ok:
             self.report("Training step failed.")
