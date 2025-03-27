@@ -33,6 +33,24 @@ class MakeNNPWorkchain(WorkChain):
             help="Input structure if used in lammps script",
         )
 
+        # User-provided metadata inputs (validation is optional)
+        spec.input(
+            "n2p2.scale.metadata",
+            valid_type=Dict,
+            help="Metadata for scaling step",
+        )
+        spec.input(
+            "n2p2.train.metadata",
+            valid_type=Dict,
+            help="Metadata for training step",
+        )
+        spec.input(
+            "n2p2.validate.metadata",
+            valid_type=Dict,
+            required=False,
+            help="Metadata for validation step",
+        )
+
         spec.outline(cls.scale, cls.train, cls.validate, cls.get_potential)
 
         spec.output("potential", valid_type=SinglefileData)
@@ -57,16 +75,7 @@ class MakeNNPWorkchain(WorkChain):
             "nbin": self.inputs.nbin,
             "inputData": self.inputs.inputData,
             "inputNN": self.inputs.inputNN,
-            "metadata": {
-                "label": "Scaling Step",
-                "options": {
-                    "resources": {
-                        "num_machines": 1,
-                        "num_mpiprocs_per_machine": 8,
-                    },
-                    "withmpi": True,
-                },
-            },
+            "metadata": self.inputs.n2p2.scale.metadata.get_dict(),
         }
         self.report("Submitting scaling calculation...")
         future = self.submit(nnpScaling, **inputs)
@@ -89,10 +98,7 @@ class MakeNNPWorkchain(WorkChain):
             "inputData": self.inputs.inputData,
             "inputNN": self.inputs.inputNN,
             "inputScale": scaledData,
-            "metadata": {
-                "label": "Training Step",
-                "options": {"withmpi": False},
-            },
+            "metadata": self.inputs.n2p2.train.metadata.get_dict(),
         }
         self.report("Submitting Training calculation...")
         future = self.submit(nnpTraining, **inputs)
@@ -132,15 +138,7 @@ class MakeNNPWorkchain(WorkChain):
                     "weight": weights_filename,
                 }
             ),
-            "metadata": {
-                "options": {
-                    "resources": {
-                        "num_machines": 1,
-                        "num_mpiprocs_per_machine": 8,
-                    },
-                    "withmpi": True,
-                }
-            },
+            "metadata": self.inputs.n2p2.validate.metadata.get_dict(),
         }
         self.report("Submitting validation calculation using LAMMPS...")
         future = self.submit(LAMMPSCalculation, **inputs)
