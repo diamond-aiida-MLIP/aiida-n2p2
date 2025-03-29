@@ -10,39 +10,50 @@ class MakeNNPWorkchain(WorkChain):
     @classmethod
     def define(cls, spec):
         super().define(spec)
-        spec.input("code", valid_type=Code)
-        spec.input("nbin", valid_type=Int)
-        spec.input("inputData", valid_type=SinglefileData, help="Training set")
-        spec.input("inputNN", valid_type=SinglefileData, help="Test set")
+        spec.input("n2p2.scale.code", valid_type=Code)
+        spec.input("n2p2.scale.nbin", valid_type=Int)
         spec.input(
-            "atomicNumber", valid_type=Int, help="Atomic number of the element"
-        )
-        spec.input(
-            "trainCode", valid_type=Code, help="Code for the training step"
-        )
-
-        spec.input("lammpsCode", valid_type=Code, help="Code for LAMMPS")
-        spec.input(
-            "lammpsScript",
+            "n2p2.scale.inputData",
             valid_type=SinglefileData,
-            help="Script to run LAMMPS",
+            help="Training set",
         )
         spec.input(
-            "lammpsData",
-            valid_type=SinglefileData,
-            help="Input structure if used in lammps script",
+            "n2p2.scale.inputNN", valid_type=SinglefileData, help="Test set"
         )
-
-        # User-provided metadata inputs (validation is optional)
         spec.input(
             "n2p2.scale.metadata",
             valid_type=Dict,
             help="Metadata for scaling step",
         )
+
+        spec.input(
+            "n2p2.train.code",
+            valid_type=Code,
+            help="Code for the training step",
+        )
+        spec.input(
+            "n2p2.train.atomicNumber",
+            valid_type=Int,
+            help="Atomic number of the element",
+        )
         spec.input(
             "n2p2.train.metadata",
             valid_type=Dict,
             help="Metadata for training step",
+        )
+
+        spec.input(
+            "n2p2.validate.code", valid_type=Code, help="Code for LAMMPS"
+        )
+        spec.input(
+            "n2p2.validate.lammpsScript",
+            valid_type=SinglefileData,
+            help="Script to run LAMMPS",
+        )
+        spec.input(
+            "n2p2.validate.lammpsData",
+            valid_type=SinglefileData,
+            help="Input structure if used in lammps script",
         )
         spec.input(
             "n2p2.validate.metadata",
@@ -50,7 +61,7 @@ class MakeNNPWorkchain(WorkChain):
             required=False,
             help="Metadata for validation step",
         )
-
+        # The outline for the workflow
         spec.outline(cls.scale, cls.train, cls.validate, cls.get_potential)
 
         spec.output("potential", valid_type=SinglefileData)
@@ -71,10 +82,10 @@ class MakeNNPWorkchain(WorkChain):
         """Step 1: Run the scaling CalcJob."""
 
         inputs = {
-            "code": self.inputs.code,
-            "nbin": self.inputs.nbin,
-            "inputData": self.inputs.inputData,
-            "inputNN": self.inputs.inputNN,
+            "code": self.inputs.n2p2.scale.code,
+            "nbin": self.inputs.n2p2.scale.nbin,
+            "inputData": self.inputs.n2p2.scale.inputData,
+            "inputNN": self.inputs.n2p2.scale.inputNN,
             "metadata": self.inputs.n2p2.scale.metadata.get_dict(),
         }
         self.report("Submitting scaling calculation...")
@@ -93,10 +104,10 @@ class MakeNNPWorkchain(WorkChain):
         scaledData = scaling_calc.outputs.scale
 
         inputs = {
-            "code": self.inputs.trainCode,
-            "atomicNumber": self.inputs.atomicNumber,
-            "inputData": self.inputs.inputData,
-            "inputNN": self.inputs.inputNN,
+            "code": self.inputs.n2p2.train.code,
+            "atomicNumber": self.inputs.n2p2.train.atomicNumber,
+            "inputData": self.inputs.n2p2.scale.inputData,
+            "inputNN": self.inputs.n2p2.scale.inputNN,
             "inputScale": scaledData,
             "metadata": self.inputs.n2p2.train.metadata.get_dict(),
         }
@@ -110,8 +121,9 @@ class MakeNNPWorkchain(WorkChain):
         """
         training_calc = self.ctx.training_calc
         scaling_calc = self.ctx.scaling_calc
-        atomic_number = self.inputs.atomicNumber.value
-        weights_filename = f"weights.{atomic_number:03d}.data"
+        weights_filename = (
+            f"weights.{self.inputs.n2p2.train.atomicNumber.value:03d}.data"
+        )
 
         if not training_calc.is_finished_ok:
             self.report("Training step failed.")
@@ -122,11 +134,11 @@ class MakeNNPWorkchain(WorkChain):
         LAMMPSCalculation = CalculationFactory("lammps.raw")
 
         inputs = {
-            "code": self.inputs.lammpsCode,
-            "script": self.inputs.lammpsScript,
+            "code": self.inputs.n2p2.validate.code,
+            "script": self.inputs.n2p2.validate.lammpsScript,
             "files": {
-                "data": self.inputs.lammpsData,
-                "inputnn": self.inputs.inputNN,
+                "data": self.inputs.n2p2.validate.lammpsData,
+                "inputnn": self.inputs.n2p2.scale.inputNN,
                 "scale": scaling_calc.outputs.scale,
                 "weight": training_calc.outputs.weights,
             },
@@ -136,6 +148,11 @@ class MakeNNPWorkchain(WorkChain):
                     "inputnn": "input.nn",
                     "scale": "scaling.data",
                     "weight": weights_filename,
+                }
+            ),
+            "settings": Dict(
+                dict={
+                    "additional_retrieve_list": [("*.lammpstrj", ".", None)],
                 }
             ),
             "metadata": self.inputs.n2p2.validate.metadata.get_dict(),
