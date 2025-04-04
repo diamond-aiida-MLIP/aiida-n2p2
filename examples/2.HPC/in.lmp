@@ -1,0 +1,65 @@
+units metal
+atom_style atomic
+boundary p p p
+
+#state variables
+variable Tliq equal 8000
+variable Pliq equal 340
+
+
+variable        dt equal 0.001
+
+variable        Tdamp equal 0.1*0.001/${dt}
+variable        Pdamp equal 1*0.001/${dt}
+variable distri_root equal 87287
+
+#sampling variables
+
+
+# Read data
+
+read_data IN.data
+
+mass 1 26.9815
+timestep ${dt}
+
+###############################################################################
+# NN
+###############################################################################
+# Variables
+variable nnpCutoff       equal  6.80
+pair_style hdnnp ${nnpCutoff} dir "./" showew no showewsum 100 resetew yes maxew 1000 cflength 1.0 cfenergy 1.0
+pair_coeff * * Al
+
+neighbor        1.5 bin
+neigh_modify    delay 10
+
+minimize 1.0e-4 1.0e-6 1000 10000
+
+write_data  min.data
+
+#thermalization
+velocity 	all create ${Tliq} ${distri_root}
+
+#thermo_style 	custom step temp press vol density pe ke etotal enthalpy
+#thermo		10
+
+
+
+dump equil  all custom 100 dump_equil.lammpstrj id type x y z vx vy vz
+
+fix nvt_fix all nvt temp ${Tliq} ${Tliq} ${Tdamp}
+run 600
+#run 10000
+
+unfix nvt_fix
+undump equil
+
+
+
+#production
+#reset_timestep 0
+#dump myDump  all custom 100 dump.lammpstrj id type x y z vx vy vz
+
+#fix 1 all npt temp ${Tliq} ${Tliq} ${Tdamp} iso ${Pliq} ${Pliq} ${Pdamp}
+#run 10000
