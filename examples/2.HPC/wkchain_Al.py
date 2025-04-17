@@ -40,10 +40,26 @@ lammpsScript=orm.SinglefileData(file=INPUT_DIR / 'in.lmp')
 lammpsData=orm.SinglefileData(file=INPUT_DIR / '222_IN.data')
 
 #Define resources
-scale_metadata = Dict(dict={"options": {"resources": {"num_machines": 1}}})
-train_metadata = Dict(dict={"options": {"resources": {"num_machines": 1}}})
-validate_metadata = Dict(dict={"options": {"resources": {"num_machines": 1}}})
+scale_metadata = Dict(dict={
+    "options": {
+        "resources": {"num_machines": 1},
+        "max_wallclock_seconds": 3600
+    }
+})
 
+train_metadata = Dict(dict={
+    "options": {
+        "resources": {"num_machines": 1},
+        "max_wallclock_seconds": 3600
+    }
+})
+
+validate_metadata = Dict(dict={
+    "options": {
+        "resources": {"num_machines": 1},
+        "max_wallclock_seconds": 3600
+    }
+})
 
 
 train_n2p2=WorkflowFactory('n2p2.make_potential')
