@@ -1,0 +1,19 @@
+{
+  "description": "Golden reference from MakeNNPWorkchain PK 949 (Aluminum, Z=13). Source dump: examples/2.HPC/dump-MakeNNPWorkchain-949/",
+  "source_workchain_pk": 949,
+  "element": "Al",
+  "atomic_number": 13,
+  "source_date": "2025-05-28",
+  "scaling": {
+    "file": "scaling.data",
+    "md5": "174a846bb41ee07b6ff15ff9063b533e",
+    "size_bytes": 3716
+  },
+  "training": {
+    "learning_curve_file": "learning-curve.out",
+    "best_epoch": 182,
+    "best_test_rmse": 0.0025103363,
+    "best_weights_file": "weights.013.000182.out",
+    "best_weights_md5": "137ea8ca7c72a92ce2a4824b0743b330"
+  }
+}

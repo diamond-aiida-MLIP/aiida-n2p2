@@ -21,6 +21,10 @@ dump-*/
 *.log
 *.data
 learning-curve*.out
+nnp-scaling.log.*
 # Figure generate (opzionale)
 examples/**/*.png
 examples/**/*.jpg
+# File locali da non versionare
+examples/1.Al/plot-symfuncs.py
+examples/1.Boron/
