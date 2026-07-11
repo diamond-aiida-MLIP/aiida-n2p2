@@ -19,10 +19,10 @@ INPUT_DIR = Path(__file__).resolve().parent
 print(INPUT_DIR)
 
 # Create or load code
-computer = orm.load_computer('DU')
-scaleCode = orm.load_code('n2p2_scale@DU')
-trainCode= orm.load_code('n2p2_train@DU')
-lammpsCode=orm.load_code('lammps@DU')
+computer = orm.load_computer('dahu_parallel')
+scaleCode = orm.load_code('n2p2_scale@dahu_parallel')
+trainCode= orm.load_code('n2p2_train@dahu_parallel')
+lammpsCode=orm.load_code('lammps@dahu_parallel')
 #computer = orm.load_computer('JZ')
 #scaleCode = orm.load_code('scale@JZ')
 #trainCode= orm.load_code('train@JZ')
@@ -43,21 +43,24 @@ lammpsData=orm.SinglefileData(file=INPUT_DIR / '222_IN.data')
 scale_metadata = Dict(dict={
     "options": {
         "resources": {"num_machines": 1},
-        "max_wallclock_seconds": 3600
+        "max_wallclock_seconds": 3600,
+        "account":"pr-diamond"
     }
 })
 
 train_metadata = Dict(dict={
     "options": {
         "resources": {"num_machines": 1},
-        "max_wallclock_seconds": 3600
+        "max_wallclock_seconds": 3600,
+        "account":"pr-diamond"
     }
 })
 
 validate_metadata = Dict(dict={
     "options": {
         "resources": {"num_machines": 1},
-        "max_wallclock_seconds": 3600
+        "max_wallclock_seconds": 3600,
+        "account":"pr-diamond"
     }
 })
 
