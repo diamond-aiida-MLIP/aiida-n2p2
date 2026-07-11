@@ -14,3 +14,13 @@ build/
 dist/
 pip-wheel-metadata/
 .tox/
+# Output di calcolo n2p2 / AiiDA
+dump-*/
+*.out
+*.histo
+*.log
+*.data
+learning-curve*.out
+# Figure generate (opzionale)
+examples/**/*.png
+examples/**/*.jpg
