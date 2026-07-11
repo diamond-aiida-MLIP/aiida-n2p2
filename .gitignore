@@ -20,11 +20,11 @@ dump-*/
 *.histo
 *.log
 *.data
-!tests/fixtures/**/*.data
 learning-curve*.out
-*.out
-!tests/fixtures/**/*.out
 nnp-scaling.log.*
+# Regression test fixtures (keep golden reference files)
+!tests/fixtures/**/*.out
+!tests/fixtures/**/*.data
 # Figure generate (opzionale)
 examples/**/*.png
 examples/**/*.jpg
