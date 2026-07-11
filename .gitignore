@@ -20,7 +20,10 @@ dump-*/
 *.histo
 *.log
 *.data
+!tests/fixtures/**/*.data
 learning-curve*.out
+*.out
+!tests/fixtures/**/*.out
 nnp-scaling.log.*
 # Figure generate (opzionale)
 examples/**/*.png
