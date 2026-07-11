@@ -41,6 +41,7 @@ def test_scale_parser_output_matches_reference(
 def test_train_parser_selects_best_weights(
     train_calcjob_node,
     train_retrieved_folder,
+    train_retrieved_temporary_dir,
     patch_parser_retrieved,
     patch_train_atomic_number,
     regression_reference,
@@ -49,7 +50,9 @@ def test_train_parser_selects_best_weights(
     patch_train_atomic_number(train_calcjob_node)
     parser = ParserFactory('n2p2.train')(train_calcjob_node)
     patch_parser_retrieved(parser, train_retrieved_folder)
-    result = parser.parse()
+    result = parser.parse(
+        retrieved_temporary_folder=str(train_retrieved_temporary_dir)
+    )
 
     assert result.status == 0, f'Train parser failed: {result.message}'
 

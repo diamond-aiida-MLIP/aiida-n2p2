@@ -1,7 +1,7 @@
 """WorkChain for LAMMPS validation of a trained n2p2 potential."""
 
 from aiida.engine import ToContext, WorkChain
-from aiida.orm import Dict, Int, SinglefileData, Code
+from aiida.orm import Bool, Dict, Int, SinglefileData, Code
 from aiida.plugins import CalculationFactory
 
 from aiida_n2p2.workflows.common import metadata_dict
@@ -51,6 +51,16 @@ class N2p2LammpsValidationWorkChain(WorkChain):
             required=False,
             help='Optional scheduler metadata for the LAMMPS CalcJob',
         )
+        spec.input(
+            'retrieve_trajectory',
+            valid_type=Bool,
+            required=False,
+            default=lambda: Bool(False),
+            help=(
+                'If True, retrieve LAMMPS trajectory files (*.lammpstrj). '
+                'These can be very large for long MD runs.'
+            ),
+        )
 
         spec.outline(cls.run_validation, cls.inspect_validation)
 
@@ -64,6 +74,10 @@ class N2p2LammpsValidationWorkChain(WorkChain):
         self.report('Submitting LAMMPS validation calculation.')
         lammps = CalculationFactory('lammps.raw')
         weights_filename = f'weights.{self.inputs.atomic_number.value:03d}.data'
+
+        settings = {}
+        if self.inputs.retrieve_trajectory.value:
+            settings['additional_retrieve_list'] = [('*.lammpstrj', '.', None)]
 
         inputs = {
             'code': self.inputs.code,
@@ -82,15 +96,12 @@ class N2p2LammpsValidationWorkChain(WorkChain):
                     'weight': weights_filename,
                 }
             ),
-            'settings': Dict(
-                dict={
-                    'additional_retrieve_list': [('*.lammpstrj', '.', None)],
-                }
-            ),
             'metadata': metadata_dict(
                 self.inputs.metadata if 'metadata' in self.inputs else None
             ),
         }
+        if settings:
+            inputs['settings'] = Dict(dict=settings)
         future = self.submit(lammps, **inputs)
         return ToContext(validation_calc=future)
 

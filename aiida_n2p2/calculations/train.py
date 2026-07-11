@@ -73,6 +73,9 @@ class nnpTraining(CalcJob):
                 'scaling.data',
             ),
         ]
-        calcinfo.retrieve_list = ['learning-curve.out', 'weights.*.out']
+        # Keep only the learning curve in the repository; epoch weight files are
+        # retrieved temporarily and discarded after the parser selects the best one.
+        calcinfo.retrieve_list = ['learning-curve.out']
+        calcinfo.retrieve_temporary_list = ['weights.*.out']
 
         return calcinfo

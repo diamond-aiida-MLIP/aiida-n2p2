@@ -4,6 +4,8 @@ Parsers provided by aiida_n2p2.
 Register parsers via the "aiida.parsers" entry point in setup.json.
 """
 
+import os
+
 import numpy as np
 
 from aiida.common import exceptions
@@ -56,12 +58,28 @@ class nnpTrainParser(Parser):
             self.logger.error(f"Failed to parse learning curve: {e}")
             return ExitCode(401, f"Failed to parse learning curve: {str(e)}")
 
-        # find the best weights
+        # find the best weights (stored in the temporary retrieved folder)
         atomic_number = self.node.inputs.atomicNumber.value
         best_weight_file = f"weights.{atomic_number:03d}.{best_epoch:06d}.out"
 
+        try:
+            retrieved_temporary_folder = kwargs['retrieved_temporary_folder']
+        except KeyError:
+            self.logger.error('Missing retrieved_temporary_folder for weight files')
+            return ExitCode(402, 'Missing temporary retrieved folder for weight files.')
+
+        weight_path = os.path.join(retrieved_temporary_folder, best_weight_file)
+        if not os.path.isfile(weight_path):
+            self.logger.error(
+                f"Weight file '{best_weight_file}' not found in temporary retrieved folder"
+            )
+            return ExitCode(
+                402,
+                f"Weight file '{best_weight_file}' not found in temporary retrieved folder.",
+            )
+
         self.logger.info(f"Parsing '{best_weight_file}'")
-        with self.retrieved.open(best_weight_file, "rb") as handle:
+        with open(weight_path, 'rb') as handle:
             output_node = SinglefileData(file=handle)
         self.out("weights", output_node)
 

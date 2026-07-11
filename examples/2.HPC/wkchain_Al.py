@@ -54,6 +54,7 @@ inputs = {
         'script': lammps_script,
         'structure': lammps_structure,
         'metadata': default_metadata,
+        'retrieve_trajectory': Bool(True),
     },
     'run_validation': Bool(True),
 }

@@ -124,10 +124,19 @@ def scale_retrieved_folder(aiida_profile_clean, tmp_path):
 @pytest.fixture
 def train_retrieved_folder(aiida_profile_clean, tmp_path, regression_reference):
     training = regression_reference['training']
-    return _build_retrieved_folder(
-        tmp_path,
-        [training['learning_curve_file'], training['best_weights_file']],
+    return _build_retrieved_folder(tmp_path, [training['learning_curve_file']])
+
+
+@pytest.fixture
+def train_retrieved_temporary_dir(tmp_path, regression_reference):
+    training = regression_reference['training']
+    temp_dir = tmp_path / 'retrieved_temporary'
+    temp_dir.mkdir()
+    shutil.copy(
+        FIXTURES_AL / training['best_weights_file'],
+        temp_dir / training['best_weights_file'],
     )
+    return temp_dir
 
 
 @pytest.fixture

@@ -55,6 +55,8 @@ def test_validate_lammps_workchain_ports():
     ):
         assert port in spec.inputs, f'Missing validation input port: {port}'
     assert spec.inputs['metadata'].required is False
+    assert 'retrieve_trajectory' in spec.inputs
+    assert spec.inputs['retrieve_trajectory'].default().value is False
 
 
 def test_make_nnp_workchain_spec():

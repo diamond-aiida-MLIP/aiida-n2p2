@@ -20,6 +20,14 @@ aiida_n2p2/
 Each step can be submitted independently, or composed through
 `MakeNNPWorkchain`.
 
+## Memory-conscious defaults
+
+- **Training:** only `learning-curve.out` is stored permanently; all
+  `weights.*.out` files are retrieved temporarily and discarded after the
+  parser selects the best epoch.
+- **LAMMPS validation:** trajectory files (`*.lammpstrj`) are **not**
+  retrieved unless `validation.retrieve_trajectory = Bool(True)`.
+
 ## Run
 
 ```bash
