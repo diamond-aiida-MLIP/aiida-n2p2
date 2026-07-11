@@ -36,10 +36,20 @@ def _register_plugin_entry_points() -> None:
     from aiida_n2p2.parsers.scaling import nnpScaleParser
     from aiida_n2p2.parsers.train import nnpTrainParser
     from aiida_n2p2.workflows.make_potential import MakeNNPWorkchain
+    from aiida_n2p2.workflows.scale import N2p2ScaleWorkChain
+    from aiida_n2p2.workflows.train import N2p2TrainWorkChain
+    from aiida_n2p2.workflows.validate_lammps import N2p2LammpsValidationWorkChain
 
     manager.add(nnpScaleParser, group='aiida.parsers', name='n2p2.scale')
     manager.add(nnpTrainParser, group='aiida.parsers', name='n2p2.train')
     manager.add(nnpPredictParser, group='aiida.parsers', name='n2p2.predict')
+    manager.add(N2p2ScaleWorkChain, group='aiida.workflows', name='n2p2.scale')
+    manager.add(N2p2TrainWorkChain, group='aiida.workflows', name='n2p2.train')
+    manager.add(
+        N2p2LammpsValidationWorkChain,
+        group='aiida.workflows',
+        name='n2p2.validate_lammps',
+    )
     manager.add(MakeNNPWorkchain, group='aiida.workflows', name='n2p2.make_potential')
 
 

@@ -1,117 +1,91 @@
-"""
-Calculations provided by aiida_n2p2.
-
-Register calculations via the "aiida.calculations" entry point in setup.json.
-"""
+"""AiiDA calculation plugin for nnp-predict."""
 
 from aiida.common import datastructures
-from aiida.engine import CalcJob
-from aiida.orm import SinglefileData,Int
+from aiida.common.folders import Folder
+from aiida.engine import CalcJob, CalcJobProcessSpec
+from aiida.orm import Code, Int, SinglefileData
 
 
 class nnpPredict(CalcJob):
-    """_summary_
+    """Run ``nnp-predict`` on a validation dataset."""
 
-    Args:
-        CalcJob (_type_): _description_
-    """
     @classmethod
-    def define (cls,spec):
-        """_summary_
-
-        Args:
-            spec (_type_): _description_
-        """
+    def define(cls, spec: CalcJobProcessSpec) -> None:
         super().define(spec)
 
-        # set default values for AiiDA options
-        spec.inputs["metadata"]["options"]["resources"].default = {
-            "num_machines": 1,
-            "num_mpiprocs_per_machine": 1,
+        spec.inputs['metadata']['options']['resources'].default = {
+            'num_machines': 1,
+            'num_mpiprocs_per_machine': 1,
         }
-        spec.inputs["metadata"]["options"]["parser_name"].default = "n2p2.predict"
-
-         # Stdout
+        spec.inputs['metadata']['options']['parser_name'].default = 'n2p2.predict'
         spec.input(
-            "metadata.options.output_filename", valid_type=str, default='predict.log'
+            'metadata.options.output_filename',
+            valid_type=str,
+            default='predict.log',
         )
 
-        #Inputs
-      #  spec.input("atomicNumbers",valid_type=str)
-      
-        
+        spec.input('code', valid_type=Code, help='Executable for nnp-predict')
+        spec.input('inputData', valid_type=SinglefileData, help='Validation set')
+        spec.input('inputNN', valid_type=SinglefileData, help='Network config')
+        spec.input('inputScale', valid_type=SinglefileData, help='Scaling data')
         spec.input(
-            "inputData", valid_type=SinglefileData, help="Validation set"
-        )
-        spec.input(
-            "inputNN", valid_type=SinglefileData, help="NN config"
-        )
-        spec.input(
-            "inputScale", valid_type=SinglefileData, help="Scaling data"
+            'weights',
+            valid_type=SinglefileData,
+            help='Weights file produced by nnp-train',
         )
         spec.input(
-            "weights", valid_type=SinglefileData, help="Weights_file in weights.atomicNumber.epoch format"
-        )
-        spec.input(
-            "param", valid_type=Int, default=lambda: Int(0), help="Write structure information for debugging to structure.out (0/1)"
-        )
-        
-        spec.output(
-            "energy", valid_type=SinglefileData, help="The output files with energies"
-        )
-        spec.output(
-            "force", valid_type=SinglefileData, help="The output files with forces"
-        )
-        spec.output(
-            "nnatoms", valid_type=SinglefileData, help="Contains the atomic energy contributions to the total potential energy"
-        )
-        spec.output(
-            "config", valid_type=SinglefileData, help="Contains the configurations with NNP energy and force predictions inserted"
+            'param',
+            valid_type=Int,
+            default=lambda: Int(0),
+            help='Write structure information to structure.out (0/1)',
         )
 
+        spec.output('energy', valid_type=SinglefileData)
+        spec.output('force', valid_type=SinglefileData)
+        spec.output('nnatoms', valid_type=SinglefileData)
+        spec.output('config', valid_type=SinglefileData)
 
-    def prepare_for_submission(self, folder):
-                """
-                Create input files.
+        spec.exit_code(
+            300,
+            'ERROR_MISSING_OUTPUT_FILES',
+            message='Calculation did not produce all expected output files.',
+        )
 
-                :param folder: an `aiida.common.folders.Folder` where the plugin should temporarily place all files
-                    needed by the calculation.
-                :return: `aiida.common.datastructures.CalcInfo` instance
-                """
-                # Weights file in specific format
-             #   weights_file = 'weights.' + str(self.inputs.atomicNumbers) + '.data'
+    def prepare_for_submission(self, folder: Folder) -> datastructures.CalcInfo:
+        codeinfo = datastructures.CodeInfo()
+        codeinfo.cmdline_params = [self.inputs.param.value]
+        codeinfo.code_uuid = self.inputs.code.uuid
+        codeinfo.stdout_name = self.metadata.options.output_filename
 
-                codeinfo = datastructures.CodeInfo()
-                codeinfo.cmdline_params = [self.inputs.param.value]
-                codeinfo.code_uuid = self.inputs.code.uuid
-                codeinfo.stdout_name = self.metadata.options.output_filename
+        calcinfo = datastructures.CalcInfo()
+        calcinfo.codes_info = [codeinfo]
+        calcinfo.local_copy_list = [
+            (
+                self.inputs.inputData.uuid,
+                self.inputs.inputData.filename,
+                self.inputs.inputData.filename,
+            ),
+            (
+                self.inputs.inputNN.uuid,
+                self.inputs.inputNN.filename,
+                self.inputs.inputNN.filename,
+            ),
+            (
+                self.inputs.inputScale.uuid,
+                self.inputs.inputScale.filename,
+                'scaling.data',
+            ),
+            (
+                self.inputs.weights.uuid,
+                self.inputs.weights.filename,
+                self.inputs.weights.filename,
+            ),
+        ]
+        calcinfo.retrieve_list = [
+            'energy.out',
+            'nnforces.out',
+            'nnatoms.out',
+            'output.data',
+        ]
 
-                # Prepare a `CalcInfo` to be returned to the engine
-                calcinfo = datastructures.CalcInfo()
-                calcinfo.codes_info = [codeinfo]
-                calcinfo.local_copy_list = [
-                    (
-                        self.inputs.inputData.uuid,
-                        self.inputs.inputData.filename,
-                        self.inputs.inputData.filename,
-                    ),
-                    (
-                        self.inputs.inputNN.uuid,
-                        self.inputs.inputNN.filename,
-                        self.inputs.inputNN.filename,
-                    ),
-                    (
-                        self.inputs.inputScale.uuid,
-                        self.inputs.inputScale.filename,
-                        'scaling.data'
-                    ),
-                    (
-                        self.inputs.weights.uuid,
-                        self.inputs.weights.filename,
-                        self.inputs.weights.filename,
-                    )
-
-                ]
-                calcinfo.retrieve_list = ['energy.out','nnforces.out','nnatoms.out','output.data']
-
-                return calcinfo
+        return calcinfo

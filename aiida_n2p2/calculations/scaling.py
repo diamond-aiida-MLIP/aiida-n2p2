@@ -47,7 +47,7 @@ class nnpScaling(CalcJob):
         spec.input(
             "inputNN",
             valid_type=SinglefileData,
-            help="Neural network architecture and hyper params",
+            help="Neural network architecture and hyperparameters",
         )
         spec.output("scale", valid_type=SinglefileData, help="File with scaling data")
 

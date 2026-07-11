@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aiida-n2p2"
-version = "0.1.0a1"
+version = "0.2.0"
 description = "AiiDA plugin for n2p2 neural network potential package."
 authors = ["Akshay Krishna Ammothum Kandy"]
 readme = "README.md"
@@ -8,13 +8,14 @@ readme = "README.md"
 [tool.poetry.dependencies]
 python = "^3.10"
 numpy = "^2.0"
+aiida-core = "^2.6"
+aiida-lammps = "^2.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
-aiida-core = "^2.6"
 
 [tool.poetry.extras]
-testing = ["pytest", "aiida-core", "numpy"]
+testing = ["pytest"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -30,7 +31,7 @@ build-backend = "poetry.core.masonry.api"
 [tool.poetry.plugins."aiida.calculations"]
 "n2p2.scale" = "aiida_n2p2.calculations.scaling:nnpScaling"
 "n2p2.train" = "aiida_n2p2.calculations.train:nnpTraining"
-"n2p2.predict"= "aiida_n2p2.calculations.predict:nnpPredict"
+"n2p2.predict" = "aiida_n2p2.calculations.predict:nnpPredict"
 
 [tool.poetry.plugins."aiida.parsers"]
 "n2p2.scale" = "aiida_n2p2.parsers.scaling:nnpScaleParser"
@@ -38,6 +39,9 @@ build-backend = "poetry.core.masonry.api"
 "n2p2.predict" = "aiida_n2p2.parsers.predict:nnpPredictParser"
 
 [tool.poetry.plugins."aiida.workflows"]
+"n2p2.scale" = "aiida_n2p2.workflows.scale:N2p2ScaleWorkChain"
+"n2p2.train" = "aiida_n2p2.workflows.train:N2p2TrainWorkChain"
+"n2p2.validate_lammps" = "aiida_n2p2.workflows.validate_lammps:N2p2LammpsValidationWorkChain"
 "n2p2.make_potential" = "aiida_n2p2.workflows.make_potential:MakeNNPWorkchain"
 
 [tool.ruff]

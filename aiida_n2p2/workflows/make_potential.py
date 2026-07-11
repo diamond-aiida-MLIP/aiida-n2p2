@@ -1,173 +1,127 @@
-from aiida.engine import WorkChain, ToContext
-from aiida.orm import Int, SinglefileData, Code, Dict
+"""End-to-end workchain composing scaling, training, and LAMMPS validation."""
 
-from aiida_n2p2.calculations.scaling import nnpScaling
-from aiida_n2p2.calculations.train import nnpTraining
-from aiida.plugins import CalculationFactory
+from aiida.engine import ToContext, WorkChain, if_
+from aiida.orm import Bool, SinglefileData
+
+from aiida_n2p2.workflows.scale import N2p2ScaleWorkChain
+from aiida_n2p2.workflows.train import N2p2TrainWorkChain
+from aiida_n2p2.workflows.validate_lammps import N2p2LammpsValidationWorkChain
 
 
 class MakeNNPWorkchain(WorkChain):
+    """Build an n2p2 potential through scaling, training, and optional LAMMPS validation."""
+
     @classmethod
     def define(cls, spec):
         super().define(spec)
-        spec.input("n2p2.scale.code", valid_type=Code)
-        spec.input("n2p2.scale.nbin", valid_type=Int)
-        spec.input(
-            "n2p2.scale.inputData",
-            valid_type=SinglefileData,
-            help="Training set",
-        )
-        spec.input(
-            "n2p2.scale.inputNN", valid_type=SinglefileData, help="Test set"
-        )
-        spec.input(
-            "n2p2.scale.metadata",
-            valid_type=Dict,
-            help="Metadata for scaling step",
-        )
 
-        spec.input(
-            "n2p2.train.code",
-            valid_type=Code,
-            help="Code for the training step",
+        spec.expose_inputs(N2p2ScaleWorkChain, namespace='scaling')
+        spec.expose_inputs(
+            N2p2TrainWorkChain,
+            namespace='training',
+            exclude=('inputData', 'inputNN', 'inputScale'),
+        )
+        spec.expose_inputs(
+            N2p2LammpsValidationWorkChain,
+            namespace='validation',
+            exclude=('input_nn', 'scale', 'weights', 'atomic_number'),
         )
         spec.input(
-            "n2p2.train.atomicNumber",
-            valid_type=Int,
-            help="Atomic number of the element",
-        )
-        spec.input(
-            "n2p2.train.metadata",
-            valid_type=Dict,
-            help="Metadata for training step",
-        )
-
-        spec.input(
-            "n2p2.validate.code", valid_type=Code, help="Code for LAMMPS"
-        )
-        spec.input(
-            "n2p2.validate.lammpsScript",
-            valid_type=SinglefileData,
-            help="Script to run LAMMPS",
-        )
-        spec.input(
-            "n2p2.validate.lammpsData",
-            valid_type=SinglefileData,
-            help="Input structure if used in lammps script",
-        )
-        spec.input(
-            "n2p2.validate.metadata",
-            valid_type=Dict,
+            'run_validation',
+            valid_type=Bool,
             required=False,
-            help="Metadata for validation step",
+            default=lambda: Bool(True),
+            help='If False, skip the LAMMPS validation step.',
         )
-        # The outline for the workflow
-        spec.outline(cls.scale, cls.train, cls.validate, cls.get_potential)
 
-        spec.output("potential", valid_type=SinglefileData)
-        spec.output("scale", valid_type=SinglefileData)
+        spec.outline(
+            cls.run_scaling,
+            cls.run_training,
+            if_(cls.should_run_validation)(cls.run_validation),
+            cls.finalize,
+        )
 
-        # Define exit codes for error handling
+        spec.output('potential', valid_type=SinglefileData)
+        spec.output('scale', valid_type=SinglefileData)
+
         spec.exit_code(
-            201, "ERROR_SCALING_FAILED", message="Scaling step failed."
+            201,
+            'ERROR_SCALING_FAILED',
+            message='Scaling step failed.',
         )
         spec.exit_code(
-            202, "ERROR_TRAINING_FAILED", message="Training step failed."
+            202,
+            'ERROR_TRAINING_FAILED',
+            message='Training step failed.',
         )
         spec.exit_code(
-            203, "ERROR_VALIDATION_FAILED", message="Prediction step failed."
+            203,
+            'ERROR_VALIDATION_FAILED',
+            message='LAMMPS validation step failed.',
         )
 
-    def scale(self):
-        """Step 1: Run the scaling CalcJob."""
+    def should_run_validation(self):
+        return self.inputs.run_validation.value
 
-        inputs = {
-            "code": self.inputs.n2p2.scale.code,
-            "nbin": self.inputs.n2p2.scale.nbin,
-            "inputData": self.inputs.n2p2.scale.inputData,
-            "inputNN": self.inputs.n2p2.scale.inputNN,
-            "metadata": self.inputs.n2p2.scale.metadata.get_dict(),
-        }
-        self.report("Submitting scaling calculation...")
-        future = self.submit(nnpScaling, **inputs)
-        return ToContext(scaling_calc=future)
+    def run_scaling(self):
+        self.report('Launching scaling work chain.')
+        inputs = self.exposed_inputs(N2p2ScaleWorkChain, namespace='scaling')
+        future = self.submit(N2p2ScaleWorkChain, **inputs)
+        return ToContext(scaling_work=future)
 
-    def train(self):
-        """Step 2: Run the training CalcJob."""
-        scaling_calc = self.ctx.scaling_calc
-        if not scaling_calc.is_finished_ok:
-            self.report("Scaling step failed.")
+    def run_training(self):
+        scaling_work = self.ctx.scaling_work
+        if not scaling_work.is_finished_ok:
+            self.report('Scaling work chain failed.')
             return self.exit_codes.ERROR_SCALING_FAILED
-        else:
-            self.report("Scaling calculation  finished successfully.")
 
-        scaledData = scaling_calc.outputs.scale
-
-        inputs = {
-            "code": self.inputs.n2p2.train.code,
-            "atomicNumber": self.inputs.n2p2.train.atomicNumber,
-            "inputData": self.inputs.n2p2.scale.inputData,
-            "inputNN": self.inputs.n2p2.scale.inputNN,
-            "inputScale": scaledData,
-            "metadata": self.inputs.n2p2.train.metadata.get_dict(),
-        }
-        self.report("Submitting Training calculation...")
-        future = self.submit(nnpTraining, **inputs)
-        return ToContext(training_calc=future)
-
-    def validate(self):
-        """Step 3: Run a validation test using LAMMPS.
-        Problems  there are custom lines in thermo
-        """
-        training_calc = self.ctx.training_calc
-        scaling_calc = self.ctx.scaling_calc
-        weights_filename = (
-            f"weights.{self.inputs.n2p2.train.atomicNumber.value:03d}.data"
+        self.report('Launching training work chain.')
+        training_inputs = self.exposed_inputs(
+            N2p2TrainWorkChain,
+            namespace='training',
         )
+        training_inputs['inputData'] = scaling_work.inputs.inputData
+        training_inputs['inputNN'] = scaling_work.inputs.inputNN
+        training_inputs['inputScale'] = scaling_work.outputs.scale
 
-        if not training_calc.is_finished_ok:
-            self.report("Training step failed.")
+        future = self.submit(N2p2TrainWorkChain, **training_inputs)
+        return ToContext(training_work=future)
+
+    def run_validation(self):
+        training_work = self.ctx.training_work
+        scaling_work = self.ctx.scaling_work
+
+        if not training_work.is_finished_ok:
+            self.report('Training work chain failed.')
             return self.exit_codes.ERROR_TRAINING_FAILED
 
-        self.report("Training calculation finished successfully.")
+        self.report('Launching LAMMPS validation work chain.')
+        validation_inputs = self.exposed_inputs(
+            N2p2LammpsValidationWorkChain,
+            namespace='validation',
+        )
+        validation_inputs['input_nn'] = scaling_work.inputs.inputNN
+        validation_inputs['scale'] = scaling_work.outputs.scale
+        validation_inputs['weights'] = training_work.outputs.weights
+        validation_inputs['atomic_number'] = training_work.inputs.atomicNumber
 
-        LAMMPSCalculation = CalculationFactory("lammps.raw")
+        future = self.submit(N2p2LammpsValidationWorkChain, **validation_inputs)
+        return ToContext(validation_work=future)
 
-        inputs = {
-            "code": self.inputs.n2p2.validate.code,
-            "script": self.inputs.n2p2.validate.lammpsScript,
-            "files": {
-                "data": self.inputs.n2p2.validate.lammpsData,
-                "inputnn": self.inputs.n2p2.scale.inputNN,
-                "scale": scaling_calc.outputs.scale,
-                "weight": training_calc.outputs.weights,
-            },
-            "filenames": Dict(
-                dict={
-                    "data": "IN.data",
-                    "inputnn": "input.nn",
-                    "scale": "scaling.data",
-                    "weight": weights_filename,
-                }
-            ),
-            "settings": Dict(
-                dict={
-                    "additional_retrieve_list": [("*.lammpstrj", ".", None)],
-                }
-            ),
-            "metadata": self.inputs.n2p2.validate.metadata.get_dict(),
-        }
-        self.report("Submitting validation calculation using LAMMPS...")
-        future = self.submit(LAMMPSCalculation, **inputs)
-        return ToContext(validation_calc=future)
+    def finalize(self):
+        training_work = self.ctx.training_work
+        scaling_work = self.ctx.scaling_work
 
-    def get_potential(self):
-        validation_calc = self.ctx.validation_calc
+        if not training_work.is_finished_ok:
+            self.report('Training work chain failed.')
+            return self.exit_codes.ERROR_TRAINING_FAILED
 
-        if not (validation_calc.is_finished_ok):
-            self.report("Validation calculation failed")
-            return self.exit_codes.ERROR_VALIDATION_FAILED
+        if self.inputs.run_validation.value:
+            validation_work = self.ctx.validation_work
+            if not validation_work.is_finished_ok:
+                self.report('LAMMPS validation work chain failed.')
+                return self.exit_codes.ERROR_VALIDATION_FAILED
 
-        self.report("LAMMPS calculation finished successfully.")
-        self.out("potential", self.ctx.training_calc.outputs.weights)
-        self.out("scale", self.ctx.scaling_calc.outputs.scale)
+        self.report('Workflow finished successfully.')
+        self.out('potential', training_work.outputs.weights)
+        self.out('scale', scaling_work.outputs.scale)

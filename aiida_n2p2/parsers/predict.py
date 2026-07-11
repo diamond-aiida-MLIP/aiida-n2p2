@@ -23,7 +23,7 @@ class nnpPredictParser(Parser):
         """
         super().__init__(node)
         if not issubclass(node.process_class, n2p2Calculation):
-            raise exceptions.ParsingError("Can only parse n2p2Calculation")
+            raise exceptions.ParsingError("Can only parse nnpPredict")
 
     def parse(self, **kwargs):
         """

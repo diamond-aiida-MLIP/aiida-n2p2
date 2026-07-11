@@ -31,7 +31,7 @@ class nnpTrainParser(Parser):
         """
         super().__init__(node)
         if not issubclass(node.process_class, n2p2Train):
-            raise exceptions.ParsingError("Can only parse n2p2Train")
+            raise exceptions.ParsingError('Can only parse nnpTraining')
 
     def parse(self, **kwargs):
         """
@@ -60,9 +60,7 @@ class nnpTrainParser(Parser):
         atomic_number = self.node.inputs.atomicNumber.value
         best_weight_file = f"weights.{atomic_number:03d}.{best_epoch:06d}.out"
 
-        # add the correct weight file
         self.logger.info(f"Parsing '{best_weight_file}'")
-        print("Best weights:", best_weight_file)
         with self.retrieved.open(best_weight_file, "rb") as handle:
             output_node = SinglefileData(file=handle)
         self.out("weights", output_node)
