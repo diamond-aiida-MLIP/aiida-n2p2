@@ -3,7 +3,7 @@
 from aiida.common import datastructures
 from aiida.common.folders import Folder
 from aiida.engine import CalcJob, CalcJobProcessSpec
-from aiida.orm import Code, Int, SinglefileData
+from aiida.orm import Bool, Code, Dict, Int, SinglefileData
 
 
 class nnpTraining(CalcJob):
@@ -37,10 +37,46 @@ class nnpTraining(CalcJob):
             help='Neural network architecture and hyperparameters',
         )
         spec.input('inputScale', valid_type=SinglefileData, help='Scaling data')
+        spec.input(
+            'is_restart',
+            valid_type=Bool,
+            required=False,
+            default=lambda: Bool(False),
+            help='If True, load restart weights from ``restart_weights``.',
+        )
+        spec.input(
+            'restart_weights',
+            valid_type=SinglefileData,
+            required=False,
+            help='Checkpoint weights copied to ``weights.ZZZ.data`` for restart.',
+        )
+        spec.input(
+            'run_label',
+            valid_type=Int,
+            required=False,
+            default=lambda: Int(1),
+            help='1-based training-run index used in merged learning-curve metadata.',
+        )
+
         spec.output(
             'weights',
             valid_type=SinglefileData,
             help='Best weights selected from the learning curve',
+        )
+        spec.output(
+            'last_weights',
+            valid_type=SinglefileData,
+            help='Weights from the last completed epoch (restart checkpoint)',
+        )
+        spec.output(
+            'learning_curve',
+            valid_type=SinglefileData,
+            help='Per-run learning curve from n2p2',
+        )
+        spec.output(
+            'training_summary',
+            valid_type=Dict,
+            help='Summary with best/last epoch and run metadata',
         )
         spec.exit_code(
             300,
@@ -73,8 +109,21 @@ class nnpTraining(CalcJob):
                 'scaling.data',
             ),
         ]
-        # Keep only the learning curve in the repository; epoch weight files are
-        # retrieved temporarily and discarded after the parser selects the best one.
+
+        if self.inputs.is_restart.value:
+            if 'restart_weights' not in self.inputs:
+                raise ValueError(
+                    'restart_weights is required when is_restart is True.'
+                )
+            restart_name = f'weights.{self.inputs.atomicNumber.value:03d}.data'
+            calcinfo.local_copy_list.append(
+                (
+                    self.inputs.restart_weights.uuid,
+                    self.inputs.restart_weights.filename,
+                    restart_name,
+                )
+            )
+
         calcinfo.retrieve_list = ['learning-curve.out']
         calcinfo.retrieve_temporary_list = ['weights.*.out']
 

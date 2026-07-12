@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aiida-n2p2"
-version = "0.2.0"
+version = "0.3.0"
 description = "AiiDA plugin for n2p2 neural network potential package."
 authors = ["Akshay Krishna Ammothum Kandy"]
 readme = "README.md"
@@ -38,10 +38,15 @@ build-backend = "poetry.core.masonry.api"
 "n2p2.train" = "aiida_n2p2.parsers.train:nnpTrainParser"
 "n2p2.predict" = "aiida_n2p2.parsers.predict:nnpPredictParser"
 
+[tool.poetry.plugins."aiida.data"]
+"n2p2.dataset" = "aiida_n2p2.data.dataset:N2p2Dataset"
+"n2p2.parameters" = "aiida_n2p2.data.parameters:N2p2Parameters"
+
 [tool.poetry.plugins."aiida.workflows"]
 "n2p2.scale" = "aiida_n2p2.workflows.scale:N2p2ScaleWorkChain"
 "n2p2.train" = "aiida_n2p2.workflows.train:N2p2TrainWorkChain"
 "n2p2.validate_lammps" = "aiida_n2p2.workflows.validate_lammps:N2p2LammpsValidationWorkChain"
+"n2p2.prepare_inputs" = "aiida_n2p2.workflows.prepare_inputs:N2p2PrepareInputsWorkChain"
 "n2p2.make_potential" = "aiida_n2p2.workflows.make_potential:MakeNNPWorkchain"
 
 [tool.ruff]
@@ -50,6 +55,6 @@ extend-exclude = ["examples"]
 
 [tool.commitizen]
 name = "cz_conventional_commits"
-version = "0.2.0"
+version = "0.3.0"
 update_changelog_on_bump = true
 tag_format = "v$version"

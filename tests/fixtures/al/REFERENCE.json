@@ -14,6 +14,9 @@
     "best_epoch": 182,
     "best_test_rmse": 0.0025103363,
     "best_weights_file": "weights.013.000182.out",
-    "best_weights_md5": "137ea8ca7c72a92ce2a4824b0743b330"
+    "best_weights_md5": "137ea8ca7c72a92ce2a4824b0743b330",
+    "last_epoch": 200,
+    "last_weights_file": "weights.013.000200.out",
+    "last_weights_md5": "137ea8ca7c72a92ce2a4824b0743b330"
   }
 }

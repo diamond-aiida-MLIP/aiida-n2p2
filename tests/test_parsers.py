@@ -64,3 +64,9 @@ def test_train_parser_selects_best_weights(
         f'expected {training["best_weights_md5"]} from '
         f'{training["best_weights_file"]} (epoch {training["best_epoch"]}).'
     )
+
+    last_md5 = _md5_bytes(parser.outputs.last_weights.get_content())
+    assert last_md5 == training['last_weights_md5']
+    summary = parser.outputs.training_summary.get_dict()
+    assert summary['last_epoch'] == training['last_epoch']
+    assert summary['best_epoch'] == training['best_epoch']

@@ -19,6 +19,7 @@ def test_workflow_entry_points_load():
     assert WorkflowFactory('n2p2.scale').__name__ == 'N2p2ScaleWorkChain'
     assert WorkflowFactory('n2p2.train').__name__ == 'N2p2TrainWorkChain'
     assert WorkflowFactory('n2p2.validate_lammps').__name__ == 'N2p2LammpsValidationWorkChain'
+    assert WorkflowFactory('n2p2.prepare_inputs').__name__ == 'N2p2PrepareInputsWorkChain'
     assert WorkflowFactory('n2p2.make_potential').__name__ == 'MakeNNPWorkchain'
 
 
@@ -37,7 +38,8 @@ def test_train_workchain_exposes_training_ports():
     spec = N2p2TrainWorkChain.spec()
     for port in ('code', 'atomicNumber', 'inputData', 'inputNN', 'inputScale'):
         assert port in spec.inputs, f'Missing training input port: {port}'
-    assert 'weights' in spec.outputs
+    for port in ('weights', 'last_weights', 'learning_curve_merged'):
+        assert port in spec.outputs
 
 
 def test_validate_lammps_workchain_ports():
@@ -79,3 +81,30 @@ def test_make_nnp_workchain_spec():
     assert 'run_validation' in spec.inputs
     assert 'potential' in spec.outputs
     assert 'scale' in spec.outputs
+    assert 'learning_curve_merged' in spec.outputs
+    assert 'learning_curve_plot_data' in spec.outputs
+
+
+def test_prepare_inputs_workchain_ports():
+    from aiida_n2p2.workflows.prepare_inputs import N2p2PrepareInputsWorkChain
+
+    spec = N2p2PrepareInputsWorkChain.spec()
+    assert 'inputData' in spec.outputs
+    assert 'inputNN' in spec.outputs
+    assert spec.inputs['dataset'].required is False
+    assert spec.inputs['parameters'].required is False
+
+
+def test_train_workchain_exposes_merged_outputs():
+    from aiida_n2p2.workflows.train import N2p2TrainWorkChain
+
+    spec = N2p2TrainWorkChain.spec()
+    for port in (
+        'learning_curve_merged',
+        'learning_curve_plot_data',
+        'last_weights',
+        'session_run_index',
+    ):
+        assert port in spec.outputs, f'Missing training output port: {port}'
+    assert 'previous_session' in spec.inputs
+    assert 'is_restart' in spec.inputs

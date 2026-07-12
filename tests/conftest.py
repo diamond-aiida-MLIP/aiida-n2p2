@@ -20,6 +20,8 @@ def _register_plugin_entry_points() -> None:
     from aiida.plugins import entry_point
     from aiida.tools.pytest_fixtures.entry_points import EntryPointManager
 
+    from aiida_n2p2.data.dataset import N2p2Dataset
+    from aiida_n2p2.data.parameters import N2p2Parameters
     from aiida_n2p2.calculations.predict import nnpPredict
     from aiida_n2p2.calculations.scaling import nnpScaling
     from aiida_n2p2.calculations.train import nnpTraining
@@ -28,6 +30,8 @@ def _register_plugin_entry_points() -> None:
     manager.add(nnpScaling, group='aiida.calculations', name='n2p2.scale')
     manager.add(nnpTraining, group='aiida.calculations', name='n2p2.train')
     manager.add(nnpPredict, group='aiida.calculations', name='n2p2.predict')
+    manager.add(N2p2Dataset, group='aiida.data', name='n2p2.dataset')
+    manager.add(N2p2Parameters, group='aiida.data', name='n2p2.parameters')
 
     entry_point.eps = manager.eps
     entry_point.eps_select = manager.eps_select
@@ -36,6 +40,7 @@ def _register_plugin_entry_points() -> None:
     from aiida_n2p2.parsers.scaling import nnpScaleParser
     from aiida_n2p2.parsers.train import nnpTrainParser
     from aiida_n2p2.workflows.make_potential import MakeNNPWorkchain
+    from aiida_n2p2.workflows.prepare_inputs import N2p2PrepareInputsWorkChain
     from aiida_n2p2.workflows.scale import N2p2ScaleWorkChain
     from aiida_n2p2.workflows.train import N2p2TrainWorkChain
     from aiida_n2p2.workflows.validate_lammps import N2p2LammpsValidationWorkChain
@@ -51,6 +56,11 @@ def _register_plugin_entry_points() -> None:
         name='n2p2.validate_lammps',
     )
     manager.add(MakeNNPWorkchain, group='aiida.workflows', name='n2p2.make_potential')
+    manager.add(
+        N2p2PrepareInputsWorkChain,
+        group='aiida.workflows',
+        name='n2p2.prepare_inputs',
+    )
 
 
 def pytest_configure(config):
@@ -132,11 +142,58 @@ def train_retrieved_temporary_dir(tmp_path, regression_reference):
     training = regression_reference['training']
     temp_dir = tmp_path / 'retrieved_temporary'
     temp_dir.mkdir()
-    shutil.copy(
-        FIXTURES_AL / training['best_weights_file'],
-        temp_dir / training['best_weights_file'],
-    )
+    for key in ('best_weights_file', 'last_weights_file'):
+        shutil.copy(
+            FIXTURES_AL / training[key],
+            temp_dir / training[key],
+        )
     return temp_dir
+
+
+@pytest.fixture
+def n2p2_train_builder_inputs(aiida_profile_clean, aiida_code_installed):
+    """Stored inputs for nnpTraining ProcessBuilder tests."""
+    from aiida.orm import Int, SinglefileData
+
+    code = aiida_code_installed(
+        default_calc_job_plugin='n2p2.train',
+        filepath_executable='nnp-train',
+    )
+    input_data = SinglefileData(file=FIXTURES_AL / 'minimal_input.data').store()
+    input_nn = SinglefileData(
+        file=Path(__file__).parent.parent / 'examples' / '1.Al' / 'input.nn'
+    ).store()
+    input_scale = SinglefileData(file=FIXTURES_AL / 'scaling.data').store()
+    restart_weights = SinglefileData(
+        file=FIXTURES_AL / 'weights.013.000200.out'
+    ).store()
+
+    return {
+        'code': code,
+        'atomicNumber': Int(13),
+        'inputData': input_data,
+        'inputNN': input_nn,
+        'inputScale': input_scale,
+        'restart_weights': restart_weights,
+    }
+
+
+@pytest.fixture
+def finished_train_session_node(aiida_profile_clean, n2p2_train_builder_inputs):
+    """Minimal finished N2p2TrainWorkChain node with restart-relevant outputs."""
+    from aiida.common.links import LinkType
+    from aiida.orm import Int, WorkChainNode
+
+    node = WorkChainNode(process_type='aiida.workflows:n2p2.train')
+    node.store()
+    session_index = Int(1).store()
+    session_index.base.links.add_incoming(
+        node, LinkType.RETURN, 'session_run_index'
+    )
+    n2p2_train_builder_inputs['restart_weights'].base.links.add_incoming(
+        node, LinkType.RETURN, 'last_weights'
+    )
+    return node
 
 
 @pytest.fixture

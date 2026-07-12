@@ -1,0 +1,427 @@
+% ---------------------------------------------------------------------------
+% Preamble snippet — add to your main document (before \begin{document}):
+%
+%   \usepackage{listings}
+%   \usepackage{xcolor}
+%   \usepackage{booktabs}
+%   \usepackage{hyperref}
+%
+%   \definecolor{codegreen}{rgb}{0,0.45,0.35}
+%   \definecolor{codegray}{rgb}{0.45,0.45,0.45}
+%
+%   \lstdefinestyle{pythonstyle}{
+%     language=Python,
+%     basicstyle=\ttfamily\small,
+%     keywordstyle=\bfseries,
+%     commentstyle=\itshape\color{codegray},
+%     stringstyle=\color{codegreen},
+%     showstringspaces=false,
+%     breaklines=true,
+%     frame=single,
+%     columns=fullflexible,
+%     keepspaces=true,
+%     literate={_}{{\_}}1,
+%   }
+%   \lstset{style=pythonstyle}
+%
+% Include this section with:
+%   \input{docs/n2p2_workflow_section}
+% ---------------------------------------------------------------------------
+
+\section{n2p2 workflow}
+\label{sec:n2p2-workflow}
+
+The \texttt{aiida-n2p2} plugin (version~0.3.0) provides an AiiDA-native interface to the
+n2p2 neural-network potential package.
+The workflow layer follows AiiDA best practices: each pipeline stage
+is exposed as an independent \texttt{WorkChain}, and a composite work chain orchestrates
+the full potential-building procedure.
+Version~0.3.0 adds structured input data types, a preparation work chain, training
+restart across multiple successful sessions, and merged learning-curve outputs.
+This section summarises the architecture, the workflow \emph{input API}, memory-conscious
+retrieval defaults, restart behaviour, and the regression test suite.
+
+\subsection{Workflow architecture}
+
+The end-to-end pipeline consists of three physical steps:
+\begin{enumerate}
+  \item \textbf{Scaling} (\texttt{nnp-scaling}): generation of symmetry-function
+        scaling data from the training set;
+  \item \textbf{Training} (\texttt{nnp-train}): optimisation of neural-network
+        weights using the scaled descriptors;
+  \item \textbf{Validation} (optional, via \texttt{aiida-lammps}): a short LAMMPS
+        molecular-dynamics run to verify the trained potential.
+\end{enumerate}
+
+Each step is wrapped in a dedicated work chain and can be submitted independently or
+composed through \texttt{MakeNNPWorkchain}:
+
+\begin{table}[htbp]
+  \centering
+  \caption{AiiDA workflow entry points registered by \texttt{aiida-n2p2} v0.3.0.}
+  \label{tab:n2p2-workflows}
+  \begin{tabular}{lll}
+    \toprule
+    Entry point & Class & Purpose \\
+    \midrule
+    \texttt{n2p2.scale}            & \texttt{N2p2ScaleWorkChain}            & Run scaling \\
+    \texttt{n2p2.train}            & \texttt{N2p2TrainWorkChain}            & Run training (with restart) \\
+    \texttt{n2p2.validate\_lammps} & \texttt{N2p2LammpsValidationWorkChain} & LAMMPS validation \\
+    \texttt{n2p2.prepare\_inputs}  & \texttt{N2p2PrepareInputsWorkChain}    & Build \texttt{input.data}/\texttt{input.nn} \\
+    \texttt{n2p2.make\_potential}  & \texttt{MakeNNPWorkchain}              & Full pipeline \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\texttt{MakeNNPWorkchain} exposes inputs from the three sub-work chains under the
+namespaces \texttt{scaling}, \texttt{training}, and \texttt{validation}.
+Scaling outputs (\texttt{inputData}, \texttt{inputNN}, \texttt{scale}) are forwarded
+automatically to the training step; trained weights and network files are forwarded to
+the validation step when enabled.
+Workflow outputs are \texttt{potential} (best weights file), \texttt{scale}
+(scaling data), \texttt{last\_weights} (checkpoint for restart),
+\texttt{learning\_curve\_merged}, and \texttt{learning\_curve\_plot\_data}.
+
+Validation is controlled by the top-level boolean input \texttt{run\_validation}
+(default: \texttt{True}).
+When set to \texttt{False}, the work chain stops after training.
+
+% ---------------------------------------------------------------------------
+\subsection{The workflow input API}
+\label{subsec:input-api}
+
+\subsubsection{What is an input API?}
+
+In software engineering, an \textbf{API} (\emph{Application Programming Interface})
+is the set of rules that defines \emph{how} a user or another program interacts with
+a piece of software: which functions can be called, which arguments they accept, and
+what they return.
+For example, a web service might expose an API with endpoints such as
+\texttt{GET /users/\{id\}}; clients must follow that contract to obtain data.
+
+In AiiDA, a \textbf{workflow input API} plays an analogous role.
+Each \texttt{WorkChain} declares a fixed list of \textbf{input ports}---named slots
+that accept AiiDA data nodes (e.g.\ \texttt{Code}, \texttt{SinglefileData},
+\texttt{Int}, \texttt{Dict}).
+Together, these ports form the \emph{input schema} of the workflow: they specify
+\begin{itemize}
+  \item \textbf{which} quantities must be provided (e.g.\ training data, executable,
+        atomic number);
+  \item \textbf{under which names} they must be passed (e.g.\ \texttt{inputData}
+        rather than \texttt{data\_file});
+  \item \textbf{which AiiDA type} each input must have (e.g.\ \texttt{Int} for the
+        atomic number);
+  \item whether an input is \textbf{required or optional}, and its \textbf{default}
+        value if optional;
+  \item how inputs are \textbf{grouped} into \textbf{namespaces} when a workflow
+        composes several sub-workflows (e.g.\ \texttt{scaling.code},
+        \texttt{training.code}).
+\end{itemize}
+
+From the user's perspective, launching a workflow means building a Python dictionary
+(\texttt{inputs}) whose keys and nested structure must match this schema exactly.
+AiiDA validates the dictionary before submission; if a required port is missing or
+has the wrong type, the submission fails immediately.
+This validation is what makes the input API a stable \emph{contract} between the
+plugin developer and the end user.
+
+When a plugin is updated, the input API may change: ports can be renamed, regrouped,
+or moved between namespaces.
+Such changes are called \textbf{breaking changes} if existing scripts must be
+rewritten to work with the new version.
+Documenting the input API is therefore essential for reproducibility and for
+migrating calculation scripts across plugin releases.
+
+\subsubsection{Input API of \texttt{MakeNNPWorkchain} (v0.2.0)}
+
+Version~0.2.0 refactors the input API of \texttt{MakeNNPWorkchain}.
+The previous single nested namespace \texttt{n2p2} was replaced by three top-level
+namespaces---\texttt{scaling}, \texttt{training}, and \texttt{validation}---plus the
+boolean flag \texttt{run\_validation}.
+Port names in the validation step were also aligned with AiiDA conventions
+(\texttt{script}, \texttt{structure}).
+
+\paragraph{Previous input API (pre-0.2.0).}
+\begin{lstlisting}
+inputs = {
+    "n2p2": {
+        "scale": {
+            "code": scale_code,
+            "nbin": nbin,
+            "inputData": input_data,
+            "inputNN": input_nn,
+            "metadata": scale_metadata,
+        },
+        "train": {
+            "code": train_code,
+            "atomicNumber": atomic_number,
+            "metadata": train_metadata,
+        },
+        "validate": {
+            "code": lammps_code,
+            "lammpsScript": lammps_script,
+            "lammpsData": lammps_structure,
+            "metadata": validate_metadata,
+        },
+    }
+}
+\end{lstlisting}
+
+\paragraph{Current input API (v0.2.0).}
+\begin{lstlisting}
+from aiida.orm import Bool
+
+inputs = {
+    "scaling": {
+        "code": scale_code,
+        "nbin": nbin,
+        "inputData": input_data,
+        "inputNN": input_nn,
+        "metadata": scale_metadata,
+    },
+    "training": {
+        "code": train_code,
+        "atomicNumber": atomic_number,  # e.g. Int(13) for Al
+        "metadata": train_metadata,
+    },
+    "validation": {
+        "code": lammps_code,
+        "script": lammps_script,        # was: lammpsScript
+        "structure": lammps_structure,  # was: lammpsData
+        "metadata": validate_metadata,
+        "retrieve_trajectory": Bool(False),
+    },
+    "run_validation": Bool(True),
+}
+\end{lstlisting}
+
+Table~\ref{tab:input-api-changes} summarises the main differences between the two
+versions.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Summary of input API changes in \texttt{aiida-n2p2} v0.2.0.}
+  \label{tab:input-api-changes}
+  \begin{tabular}{lll}
+    \toprule
+    Aspect & Pre-0.2.0 & v0.2.0 \\
+    \midrule
+    Top-level namespace   & \texttt{n2p2}     & \texttt{scaling}, \texttt{training}, \texttt{validation} \\
+    Scaling sub-namespace & \texttt{scale}    & \texttt{scaling} \\
+    Training sub-namespace& \texttt{train}    & \texttt{training} \\
+    Validation sub-namespace & \texttt{validate} & \texttt{validation} \\
+    LAMMPS input script   & \texttt{lammpsScript} & \texttt{script} \\
+    LAMMPS structure file & \texttt{lammpsData}   & \texttt{structure} \\
+    Skip validation flag  & not available     & \texttt{run\_validation} \\
+    Trajectory retrieval  & always on         & \texttt{retrieve\_trajectory} (default \texttt{False}) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The atomic number (\texttt{atomicNumber}) is a \emph{required} training input in
+both versions.
+It is not hard-coded in the plugin: the user must supply the correct value for each
+chemical element (e.g.\ \texttt{Int(13)} for aluminium, \texttt{Int(5)} for boron).
+
+To submit the workflow once the \texttt{inputs} dictionary is built:
+\begin{lstlisting}
+from aiida.engine import run_get_node
+from aiida.plugins import WorkflowFactory
+
+MakeNNP = WorkflowFactory("n2p2.make_potential")
+result, node = run_get_node(MakeNNP, **inputs)
+print(f"Submitted MakeNNPWorkchain with PK: {node.pk}")
+\end{lstlisting}
+
+% ---------------------------------------------------------------------------
+\subsection{CalcJobs and parsers}
+
+Three \texttt{CalcJob} plugins mirror the n2p2 executables:
+
+\begin{table}[htbp]
+  \centering
+  \caption{Calculation and parser entry points.}
+  \label{tab:n2p2-calcs}
+  \begin{tabular}{lll}
+    \toprule
+    Entry point & CalcJob & Executable \\
+    \midrule
+    \texttt{n2p2.scale}   & \texttt{nnpScaling}  & \texttt{nnp-scaling} \\
+    \texttt{n2p2.train}   & \texttt{nnpTraining} & \texttt{nnp-train}   \\
+    \texttt{n2p2.predict} & \texttt{nnpPredict}  & \texttt{nnp-predict} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+CalcJobs were hardened for AiiDA compliance:
+\begin{itemize}
+  \item explicit \texttt{code} input in \texttt{define()};
+  \item default scheduler resources and parser names;
+  \item structured exit codes for missing output files;
+  \item removal of debug \texttt{print()} statements from parsers;
+  \item clearer error messages in scaling and predict parsers.
+\end{itemize}
+
+The training parser selects the best epoch from \texttt{learning-curve.out} (lowest
+test-set RMSE) and stores the corresponding weight file as \texttt{weights}.
+It also stores \texttt{last\_weights} from the final completed epoch, which serves
+as the restart checkpoint for the next training session.
+
+% ---------------------------------------------------------------------------
+\subsection{Structured inputs and restart (v0.3.0)}
+\label{subsec:v030-restart}
+
+\subsubsection{Data types}
+
+Two AiiDA data types wrap n2p2 input files with provenance-friendly metadata:
+
+\begin{table}[htbp]
+  \centering
+  \caption{Structured data entry points (v0.3.0).}
+  \label{tab:n2p2-data}
+  \begin{tabular}{lll}
+    \toprule
+    Entry point & Class & Purpose \\
+    \midrule
+    \texttt{n2p2.dataset}     & \texttt{N2p2Dataset}     & Training set (\texttt{input.data}) \\
+    \texttt{n2p2.parameters}  & \texttt{N2p2Parameters}  & Network config (\texttt{input.nn}) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\texttt{N2p2Parameters} parses \texttt{input.nn} into an editable keyword dictionary.
+Keywords can be active, commented out, or flag-style (e.g.\
+\texttt{\#use\_old\_weights\_short}).
+The method \texttt{prepare\_for\_restart()} enables \texttt{use\_old\_weights\_short}
+and optionally extends \texttt{epochs}:
+\begin{lstlisting}
+from aiida.plugins import DataFactory
+
+N2p2Parameters = DataFactory("n2p2.parameters")
+params = N2p2Parameters.from_file("input.nn")
+params.set("epochs", "20")
+params.prepare_for_restart(additional_epochs=20)
+input_nn = params.get_singlefile()
+\end{lstlisting}
+
+\texttt{N2p2PrepareInputsWorkChain} renders \texttt{input.data} and \texttt{input.nn}
+from these nodes (or from legacy \texttt{SinglefileData}), applying optional keyword
+overrides and restart preparation when \texttt{is\_restart = Bool(True)}.
+
+\subsubsection{Multi-session training restart}
+
+\texttt{N2p2TrainWorkChain} accepts optional restart inputs:
+
+\begin{itemize}
+  \item \texttt{is\_restart} (\texttt{Bool}): restart from a previous session;
+  \item \texttt{previous\_session} (\texttt{WorkChainNode}): prior
+        \texttt{N2p2TrainWorkChain} whose \texttt{last\_weights} are reused;
+  \item \texttt{parameters} (\texttt{N2p2Parameters}): template used to regenerate
+        \texttt{input.nn} with restart keywords;
+  \item \texttt{additional\_epochs} (\texttt{Int}): extend \texttt{epochs} when
+        preparing the restart \texttt{input.nn}.
+\end{itemize}
+
+On restart, the work chain copies \texttt{previous\_session.outputs.last\_weights}
+into the CalcJob sandbox as \texttt{weights.ZZZ.data}, sets \texttt{run\_label} to
+the previous value plus one, and merges learning-curve segments into
+\texttt{learning\_curve\_merged} and \texttt{learning\_curve\_plot\_data}
+(one colour per run, global epoch axis).
+
+Example (two deliberate sessions, 20~+~20 epochs):
+\begin{lstlisting}
+from aiida.engine import run_get_node
+from aiida.orm import Bool, Int
+from aiida.plugins import WorkflowFactory
+
+ScaleWC = WorkflowFactory("n2p2.scale")
+TrainWC = WorkflowFactory("n2p2.train")
+
+_, scaling = run_get_node(ScaleWC, ...)
+_, run1 = run_get_node(TrainWC, ...)
+
+_, run2 = run_get_node(
+    TrainWC,
+    ...,
+    is_restart=Bool(True),
+    previous_session=run1,
+    parameters=params,
+    additional_epochs=Int(20),
+)
+merged = run2.outputs.learning_curve_plot_data.get_dict()
+\end{lstlisting}
+
+\paragraph{Scope.}
+This restart API assumes each session finishes successfully
+(\texttt{is\_finished\_ok}).
+Recovery after scheduler walltime limits (incomplete epochs) is a planned extension;
+see \texttt{examples/3.Restart/README.md} for the current interactive demo.
+
+Template leftovers from the original plugin scaffold (\texttt{helpers.py},
+\texttt{cli.py}, unused \texttt{DiffParameters} data type) were removed.
+
+\subsection{Memory-conscious retrieval defaults}
+
+Two design choices reduce permanent storage in the AiiDA repository and avoid
+unnecessary data transfer on HPC systems.
+
+\paragraph{Training weight files.}
+n2p2 writes one \texttt{weights.ZZZ.EEEEEE.out} file per training epoch.
+Only the file corresponding to the best epoch is needed as a workflow output.
+Accordingly, in \texttt{nnpTraining}:
+\begin{itemize}
+  \item \texttt{learning-curve.out} is listed in \texttt{retrieve\_list}
+        (stored permanently);
+  \item \texttt{weights.*.out} is listed in \texttt{retrieve\_temporary\_list}
+        (discarded after parsing).
+\end{itemize}
+The train parser reads the best weight file from the temporary retrieved folder and
+stores only that single file in the provenance graph.
+For a typical aluminium run with ${\sim}200$ epochs, this avoids archiving
+${\sim}200$ redundant weight files (${\sim}1.2\,\mathrm{MB}$ in the reference case,
+scaling to hundreds of megabytes for long training runs).
+
+\paragraph{LAMMPS trajectories.}
+By default, LAMMPS validation does \emph{not} retrieve trajectory files
+(\texttt{*.lammpstrj}), which can grow to gigabytes for long molecular-dynamics runs.
+Retrieval is opt-in via \texttt{validation.retrieve\_trajectory = Bool(True)}.
+Examples that post-process trajectories (e.g.\ radial distribution function analysis
+or structure visualisation) set this flag to \texttt{True}; production validation
+runs that only check exit status can leave it at the default \texttt{False}.
+
+\subsection{Regression tests}
+
+A fast regression test suite (34 tests, ${\sim}5\,\mathrm{s}$) validates parser
+logic, structured inputs, restart wiring, and learning-curve merging against golden
+outputs from a successful aluminium run
+(\texttt{MakeNNPWorkchain<949>}) without re-executing n2p2 or LAMMPS.
+Fixtures are stored under \texttt{tests/fixtures/al/} with a
+\texttt{REFERENCE.json} manifest recording:
+\begin{itemize}
+  \item MD5 checksum of \texttt{scaling.data};
+  \item best training epoch (182), last epoch (200), and test-set RMSE;
+  \item MD5 checksum of the selected best and last weights files.
+\end{itemize}
+
+Tests cover scale and train parser output, learning-curve epoch selection, plugin
+entry-point registration, work-chain port specifications, \texttt{input.nn} parsing,
+\texttt{N2p2Parameters} restart preparation, and CalcJob/WorkChain restart wiring.
+They are run with:
+\begin{lstlisting}[language=bash]
+PYTHONPATH=. pytest -v
+\end{lstlisting}
+
+\subsection{Updated examples}
+
+The following examples were migrated to the v0.2.0+ input API:
+\begin{itemize}
+  \item \texttt{examples/1.Al/AiidA-n2p2\_demo.ipynb} --- local Al demonstration
+        notebook (with \texttt{retrieve\_trajectory = Bool(True)} for trajectory
+        visualisation);
+  \item \texttt{examples/2.HPC/wkchain\_Al.py} --- full pipeline submission on HPC;
+  \item \texttt{examples/1.Boron/aiida-n2p2\_demo.py} --- boron example with
+        \texttt{Int(5)} and \texttt{retrieve\_trajectory = Bool(False)};
+  \item \texttt{examples/3.Restart/restart\_train\_demo.py} --- minimal scale~+
+        two-session training restart (20~+~20 epochs, no LAMMPS); interactive
+        smoke test for v0.3.0 restart outputs and merged learning curves.
+\end{itemize}
