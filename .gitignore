@@ -25,6 +25,7 @@ nnp-scaling.log.*
 # Regression test fixtures (keep golden reference files)
 !tests/fixtures/**/*.out
 !tests/fixtures/**/*.data
+!examples/3.Restart/input.data
 # Figure generate (opzionale)
 examples/**/*.png
 examples/**/*.jpg
