@@ -60,6 +60,11 @@ Details: [`tests/README.md`](tests/README.md).
 - Workflow and restart API (LaTeX): [`docs/n2p2_workflow_section.tex`](docs/n2p2_workflow_section.tex)
 - Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 
+## Authors
+
+- **v0.1.0–v0.2.0:** [Akshay Krishna Ammothum Kandy](https://github.com/aksam432) — initial rudimentary plugin (CalcJobs, basic WorkChains, first examples).
+- **v0.3.0–v0.4.0:** [Irina Piazza](https://github.com/irina-piazza) — structured inputs (`N2p2Dataset`, `N2p2Parameters`), training restart, HPC/OAR integration, tests, and documentation.
+
 ## License
 
 MIT
