@@ -3,9 +3,20 @@
 from pathlib import Path
 
 from aiida_n2p2.data.parameters import N2p2Parameters
-from aiida_n2p2.utils.input_nn import enable_keyword, keyword_states, parse_input_nn
+from aiida_n2p2.utils.input_nn import (
+    enable_keyword,
+    keyword_states,
+    parse_input_nn,
+    render_input_nn,
+)
 
 EXAMPLE_NN = Path(__file__).parent.parent / 'examples' / '1.Al' / 'input.nn'
+
+
+def test_render_input_nn_preserves_original_formatting():
+    original = EXAMPLE_NN.read_text(encoding='utf-8')
+    lines = parse_input_nn(EXAMPLE_NN)
+    assert render_input_nn(lines) == original
 
 
 def test_parse_input_nn_finds_commented_restart_flag():

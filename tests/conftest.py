@@ -79,13 +79,19 @@ def al_fixtures_dir() -> Path:
     return FIXTURES_AL
 
 
-def _build_retrieved_folder(tmp_path: Path, filenames: list[str]):
+def _build_retrieved_folder(
+    tmp_path: Path,
+    filenames: list[str],
+    *,
+    extra_sources: dict[str, Path] | None = None,
+):
     from aiida.orm import FolderData
 
     retrieved_dir = tmp_path / 'retrieved'
     retrieved_dir.mkdir()
     for name in filenames:
-        shutil.copy(FIXTURES_AL / name, retrieved_dir / name)
+        source = (extra_sources or {}).get(name, FIXTURES_AL / name)
+        shutil.copy(source, retrieved_dir / name)
 
     folder = FolderData()
     folder.put_object_from_tree(str(retrieved_dir))
@@ -115,11 +121,13 @@ def train_calcjob_node(aiida_profile_clean):
 
 @pytest.fixture
 def patch_train_atomic_number(monkeypatch, regression_reference):
-    """Mock atomicNumber.value without creating extra DB links."""
+    """Mock training CalcJob inputs without creating extra DB links."""
 
     def _patch(calcjob):
         inputs = SimpleNamespace(
-            atomicNumber=SimpleNamespace(value=regression_reference['atomic_number'])
+            atomicNumber=SimpleNamespace(value=regression_reference['atomic_number']),
+            inputNN=SimpleNamespace(filename='input.nn'),
+            is_restart=SimpleNamespace(value=False),
         )
         monkeypatch.setattr(type(calcjob), 'inputs', property(lambda self, i=inputs: i))
 
@@ -134,7 +142,12 @@ def scale_retrieved_folder(aiida_profile_clean, tmp_path):
 @pytest.fixture
 def train_retrieved_folder(aiida_profile_clean, tmp_path, regression_reference):
     training = regression_reference['training']
-    return _build_retrieved_folder(tmp_path, [training['learning_curve_file']])
+    example_nn = Path(__file__).parent.parent / 'examples' / '1.Al' / 'input.nn'
+    return _build_retrieved_folder(
+        tmp_path,
+        [training['learning_curve_file'], example_nn.name],
+        extra_sources={example_nn.name: example_nn},
+    )
 
 
 @pytest.fixture
@@ -182,7 +195,7 @@ def n2p2_train_builder_inputs(aiida_profile_clean, aiida_code_installed):
 def finished_train_session_node(aiida_profile_clean, n2p2_train_builder_inputs):
     """Minimal finished N2p2TrainWorkChain node with restart-relevant outputs."""
     from aiida.common.links import LinkType
-    from aiida.orm import Int, WorkChainNode
+    from aiida.orm import Dict, Int, WorkChainNode
 
     node = WorkChainNode(process_type='aiida.workflows:n2p2.train')
     node.store()
@@ -193,7 +206,66 @@ def finished_train_session_node(aiida_profile_clean, n2p2_train_builder_inputs):
     n2p2_train_builder_inputs['restart_weights'].base.links.add_incoming(
         node, LinkType.RETURN, 'last_weights'
     )
+    plot_data = Dict(
+        dict={
+            'n_runs': 1,
+            'runs': [
+                {
+                    'run_index': 0,
+                    'label': 'run-1',
+                    'color': '#1f77b4',
+                    'epoch_offset': 0,
+                    'n_epochs': 1,
+                    'epoch_local_start': 1,
+                    'epoch_local_end': 1,
+                    'epoch_global_start': 1,
+                    'epoch_global_end': 1,
+                }
+            ],
+            'epochs_global': [1],
+            'epochs_local': [1],
+            'run_index': [0],
+            'rmse_train': [0.1],
+            'rmse_test': [0.2],
+        }
+    ).store()
+    plot_data.base.links.add_incoming(
+        node, LinkType.RETURN, 'learning_curve_plot_data'
+    )
     return node
+
+
+@pytest.fixture
+def incomplete_train_calcjob_node(regression_reference):
+    """Failed CalcJob-like node with parsed outputs suitable for auto-restart."""
+    curve_path = (
+        FIXTURES_AL / regression_reference['training']['learning_curve_file']
+    )
+    truncated_curve = '\n'.join(curve_path.read_text(encoding='utf-8').splitlines()[:51])
+
+    class Outputs:
+        def __init__(self):
+            self.training_summary = SimpleNamespace(
+                get_dict=lambda: {
+                    'last_epoch': 50,
+                    'target_epochs': 200,
+                    'training_completed': False,
+                    'epochs_remaining': 150,
+                }
+            )
+            self.last_weights = object()
+            self.learning_curve = SimpleNamespace(get_content=lambda: truncated_curve)
+
+        def __contains__(self, key):
+            return hasattr(self, key)
+
+    return SimpleNamespace(
+        exit_status=143,
+        exit_message='Killed by scheduler',
+        is_finished_ok=False,
+        is_finished=True,
+        outputs=Outputs(),
+    )
 
 
 @pytest.fixture

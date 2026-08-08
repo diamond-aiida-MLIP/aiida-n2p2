@@ -132,15 +132,25 @@ def keyword_states(lines: list[InputNnLine]) -> dict[str, dict]:
     return states
 
 
+def target_epochs_from_input_nn(source: str | Path | TextIO | BinaryIO) -> int:
+    """Return the active ``epochs`` keyword from an ``input.nn`` template."""
+    lines = parse_input_nn(source)
+    states = keyword_states(lines)
+    try:
+        return int(states['epochs']['value'])
+    except KeyError as exc:
+        raise ValueError("Active keyword 'epochs' not found in input.nn.") from exc
+
+
 def set_keyword(lines: list[InputNnLine], keyword: str, value: str) -> list[InputNnLine]:
     updated = deepcopy(lines)
     for line in updated:
         if line.kind == 'keyword' and line.keyword == keyword:
             line.commented = False
             line.value = value
+            line.raw = patch_keyword_value_line(line.raw, keyword, value)
             return updated
     raise KeyError(f"Keyword '{keyword}' not found in input.nn template.")
-    return updated  # pragma: no cover
 
 
 def enable_keyword(lines: list[InputNnLine], keyword: str) -> list[InputNnLine]:
@@ -148,9 +158,9 @@ def enable_keyword(lines: list[InputNnLine], keyword: str) -> list[InputNnLine]:
     for line in updated:
         if line.kind == 'keyword' and line.keyword == keyword:
             line.commented = False
+            line.raw = patch_keyword_comment_state(line.raw, keyword, commented=False)
             return updated
     raise KeyError(f"Keyword '{keyword}' not found in input.nn template.")
-    return updated  # pragma: no cover
 
 
 def disable_keyword(lines: list[InputNnLine], keyword: str) -> list[InputNnLine]:
@@ -158,28 +168,50 @@ def disable_keyword(lines: list[InputNnLine], keyword: str) -> list[InputNnLine]
     for line in updated:
         if line.kind == 'keyword' and line.keyword == keyword:
             line.commented = True
+            line.raw = patch_keyword_comment_state(line.raw, keyword, commented=True)
             return updated
     raise KeyError(f"Keyword '{keyword}' not found in input.nn template.")
-    return updated  # pragma: no cover
 
 
 def render_input_nn(lines: list[InputNnLine]) -> str:
     """Render structured lines back to an ``input.nn`` file."""
-    rendered: list[str] = []
-    for line in lines:
-        if line.kind == 'raw':
-            rendered.append(line.raw)
-            continue
-        if not line.keyword:
-            rendered.append(line.raw)
-            continue
+    if not lines:
+        return ''
+    return '\n'.join(line.raw for line in lines) + '\n'
 
-        body = line.keyword
-        if line.value is not None:
-            body = f'{body} {line.value}'
-        if line.inline_comment:
-            body = f'{body} # {line.inline_comment}'
-        if line.commented:
-            body = f'#{body}'
-        rendered.append(body)
-    return '\n'.join(rendered) + '\n'
+
+def _leading_whitespace(raw_line: str) -> str:
+    return raw_line[: len(raw_line) - len(raw_line.lstrip(' \t'))]
+
+
+def patch_keyword_value_line(raw_line: str, keyword: str, value: str) -> str:
+    """Replace a keyword value while preserving spacing and inline comments."""
+    physical = raw_line.rstrip('\n\r')
+    pattern = re.compile(
+        rf'^(\s*(?:#\s*)?)'
+        rf'({re.escape(keyword)})'
+        rf'(\s+)'
+        rf'(\S+)'
+        rf'(.*)$'
+    )
+    match = pattern.match(physical)
+    if not match:
+        return raw_line
+    lead, kw, gap, _old_value, tail = match.groups()
+    return f'{lead}{kw}{gap}{value}{tail}'
+
+
+def patch_keyword_comment_state(raw_line: str, keyword: str, commented: bool) -> str:
+    """Comment or uncomment a keyword line while preserving formatting."""
+    physical = raw_line.rstrip('\n\r')
+    if commented:
+        if physical.lstrip().startswith('#'):
+            return raw_line
+        leading = _leading_whitespace(physical)
+        return leading + '#' + physical.lstrip()
+
+    pattern = re.compile(rf'^(\s*)#\s*({re.escape(keyword)})(.*)$')
+    match = pattern.match(physical)
+    if match:
+        return f'{match.group(1)}{match.group(2)}{match.group(3)}'
+    return raw_line

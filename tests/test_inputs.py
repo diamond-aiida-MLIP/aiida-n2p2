@@ -19,6 +19,7 @@ def test_dataset_reads_structure_count():
     assert dataset.base.attributes.get('n_structures') == 2
     assert dataset.base.attributes.get('md5')
     single = dataset.get_singlefile()
+    assert single.filename == 'input.data'
     assert 'begin' in single.get_content()
 
 
@@ -48,9 +49,18 @@ def test_parameters_apply_overrides_and_enable_lists():
 
 def test_parameters_singlefile_matches_render():
     params = N2p2Parameters.from_file(EXAMPLE_NN)
+    original = EXAMPLE_NN.read_bytes()
+    single = params.get_singlefile()
+    assert single.filename == 'input.nn'
+    assert single.get_content().encode('utf-8') == original
+
+
+def test_parameters_set_epochs_preserves_formatting():
+    params = N2p2Parameters.from_file(EXAMPLE_NN)
     params.set('epochs', '777')
-    content = params.get_singlefile().get_content()
-    assert 'epochs                          777' in content or 'epochs 777' in content.replace('  ', ' ')
+    rendered = params.render()
+    assert 'epochs                          777' in rendered
+    assert '# These keywords are (almost) always required.' in rendered
 
 
 def test_prepare_for_restart_enables_flag_without_changing_template_file():

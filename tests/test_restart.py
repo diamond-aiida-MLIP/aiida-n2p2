@@ -50,6 +50,8 @@ def test_train_parser_stores_best_and_last_weights(
     assert summary['best_epoch'] == training['best_epoch']
     assert summary['last_epoch'] == training['last_epoch']
     assert summary['is_restart'] is False
+    assert summary['target_epochs'] == 200
+    assert summary['training_completed'] is True
 
     assert parser.outputs.weights.filename == training['best_weights_file']
     assert parser.outputs.last_weights.filename == training['last_weights_file']
@@ -185,7 +187,7 @@ def test_train_workchain_restart_wires_calcjob_submit(
         captured['inputs'] = inputs
         return MagicMock()
 
-    def fake_exposed_inputs(_self, _cls, exclude=()):
+    def fake_exposed_inputs(_self, _cls, exclude=(), namespace=None, agglomerate=True):
         excluded = set(exclude)
         return {
             key: value
@@ -225,6 +227,8 @@ def test_train_workchain_restart_wires_calcjob_submit(
     workchain._parsed_inputs = inputs_obj
     workchain._context = SimpleNamespace()
 
+    init_result = workchain.initialize_session()
+    assert init_result is None
     workchain.setup_training()
 
     assert captured['process_class'] is CalculationFactory('n2p2.train')
@@ -235,3 +239,83 @@ def test_train_workchain_restart_wires_calcjob_submit(
         inputs['restart_weights'].uuid
         == n2p2_train_builder_inputs['restart_weights'].uuid
     )
+
+
+def test_auto_restart_continues_after_incomplete_calcjob(
+    monkeypatch,
+    n2p2_train_builder_inputs,
+    incomplete_train_calcjob_node,
+    regression_reference,
+):
+    """Auto-restart must schedule another segment when epochs are incomplete."""
+    from types import MethodType, SimpleNamespace
+    from unittest.mock import MagicMock
+
+    from aiida.orm import Bool, Dict, Int
+    from aiida.plugins import CalculationFactory
+
+    from aiida_n2p2.workflows.train import N2p2TrainWorkChain
+
+    class Inputs(SimpleNamespace):
+        def __contains__(self, key):
+            return hasattr(self, key)
+
+    submit_calls: list[dict] = []
+
+    def intercept_submit(_self, process_class, **inputs):
+        submit_calls.append({'process_class': process_class, 'inputs': inputs})
+        return MagicMock()
+
+    def fake_exposed_inputs(_self, _cls, exclude=(), namespace=None, agglomerate=True):
+        excluded = set(exclude)
+        return {
+            key: value
+            for key, value in workchain.inputs.__dict__.items()
+            if not key.startswith('_') and key not in excluded
+        }
+
+    monkeypatch.setattr(N2p2TrainWorkChain, 'submit', intercept_submit)
+    monkeypatch.setattr(
+        'aiida_n2p2.workflows.train.ToContext',
+        lambda *args, **kwargs: kwargs,
+    )
+
+    inputs_obj = Inputs(
+        code=n2p2_train_builder_inputs['code'],
+        atomicNumber=n2p2_train_builder_inputs['atomicNumber'],
+        inputData=n2p2_train_builder_inputs['inputData'],
+        inputNN=n2p2_train_builder_inputs['inputNN'],
+        inputScale=n2p2_train_builder_inputs['inputScale'],
+        metadata=Dict(
+            dict={
+                'options': {
+                    'resources': {
+                        'num_machines': 1,
+                        'num_mpiprocs_per_machine': 1,
+                    }
+                }
+            }
+        ),
+        auto_restart=Bool(True),
+        max_auto_restarts=Int(3),
+    )
+
+    workchain = object.__new__(N2p2TrainWorkChain)
+    workchain.report = lambda _message: None
+    workchain.exposed_inputs = MethodType(fake_exposed_inputs, workchain)
+    workchain._parsed_inputs = inputs_obj
+    workchain._context = SimpleNamespace()
+
+    assert workchain.initialize_session() is None
+    workchain.setup_training()
+    workchain.ctx.training_calc = incomplete_train_calcjob_node
+    assert workchain.inspect_training() is None
+    assert workchain.ctx.continue_training is True
+    assert workchain.ctx.auto_restart_count == 1
+
+    workchain.setup_training()
+    assert len(submit_calls) == 2
+    second = submit_calls[1]['inputs']
+    assert second['is_restart'].value is True
+    assert second['run_label'].value == 2
+    assert 'restart_weights' in second

@@ -10,6 +10,8 @@ from aiida.orm import SinglefileData, CalcJobNode
 from aiida.parsers.parser import Parser
 from aiida.plugins import CalculationFactory
 
+from aiida_n2p2.utils.remote_outputs import fetch_remote_output_file
+
 n2p2Calculation = CalculationFactory("n2p2.scale")
 
 
@@ -41,20 +43,29 @@ class nnpScaleParser(Parser):
         """
         output_filename = "scaling.data"
 
-        # Check that folder content is as expected
-        files_retrieved = self.retrieved.list_object_names()
-        files_expected = [output_filename]
-        # Note: set(A) <= set(B) checks whether A is a subset of B
-        if not set(files_expected) <= set(files_retrieved):
+        if output_filename in self.retrieved.list_object_names():
+            self.logger.info(f"Parsing '{output_filename}'")
+            with self.retrieved.open(output_filename, "rb") as handle:
+                output_node = SinglefileData(file=handle)
+        else:
             self.logger.error(
-                f"Found files '{files_retrieved}', expected to find '{files_expected}'"
+                "Found files %r, expected to find %r",
+                self.retrieved.list_object_names(),
+                [output_filename],
             )
-            return self.exit_codes.ERROR_MISSING_OUTPUT_FILES
+            remote_path = fetch_remote_output_file(
+                self.node,
+                output_filename,
+                logger=self.logger,
+            )
+            if remote_path is None:
+                return self.exit_codes.ERROR_MISSING_OUTPUT_FILES
+            self.logger.info(f"Parsing '{output_filename}' recovered from remote")
+            try:
+                with remote_path.open("rb") as handle:
+                    output_node = SinglefileData(file=handle)
+            finally:
+                remote_path.unlink(missing_ok=True)
 
-        # add output file
-        self.logger.info(f"Parsing '{output_filename}'")
-        with self.retrieved.open(output_filename, "rb") as handle:
-            output_node = SinglefileData(file=handle)
         self.out("scale", output_node)
-
         return ExitCode(0)

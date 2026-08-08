@@ -24,6 +24,7 @@ class N2p2Parameters(Data):
     """Structured representation of an ``input.nn`` template."""
 
     _ATTR_LINES = 'lines'
+    _FILENAME = 'input.nn'
 
     @classmethod
     def from_file(cls, filepath: str | Path, *, label: str | None = None) -> N2p2Parameters:
@@ -36,6 +37,7 @@ class N2p2Parameters(Data):
         node.set_attribute(cls._ATTR_LINES, lines_to_dicts(lines))
         node.set_attribute('source_filename', path.name)
         node.set_attribute('keywords', keyword_states(lines))
+        node.put_object_from_file(str(path), cls._FILENAME)
         return node
 
     @classmethod
@@ -50,9 +52,17 @@ class N2p2Parameters(Data):
     def _get_lines(self):
         return dicts_to_lines(self.get_attribute(self._ATTR_LINES))
 
+    def _write_repository(self, lines) -> None:
+        content = render_input_nn(lines).encode('utf-8')
+        buffer = io.BytesIO(content)
+        if self._FILENAME in self.base.repository.list_object_names():
+            self.base.repository.delete_object(self._FILENAME)
+        self.base.repository.put_object_from_filelike(buffer, self._FILENAME)
+
     def _store_lines(self, lines) -> None:
         self.set_attribute(self._ATTR_LINES, lines_to_dicts(lines))
         self.set_attribute('keywords', keyword_states(lines))
+        self._write_repository(lines)
 
     def set(self, keyword: str, value: str) -> None:
         """Set an active keyword value."""
@@ -90,7 +100,14 @@ class N2p2Parameters(Data):
         return render_input_nn(self._get_lines())
 
     def get_singlefile(self) -> SinglefileData:
-        return SinglefileData(io.BytesIO(self.render().encode('utf-8')))
+        """Return the on-disk ``input.nn`` bytes staged for CalcJobs."""
+        if self._FILENAME in self.base.repository.list_object_names():
+            with self.base.repository.open(self._FILENAME, 'rb') as handle:
+                return SinglefileData(file=handle, filename=self._FILENAME)
+        return SinglefileData(
+            io.BytesIO(self.render().encode('utf-8')),
+            filename=self._FILENAME,
+        )
 
     def clone(self) -> N2p2Parameters:
         """Return a mutable copy without storing."""

@@ -28,13 +28,19 @@ Each step can be submitted independently, or composed through
 - **LAMMPS validation:** trajectory files (`*.lammpstrj`) are **not**
   retrieved unless `validation.retrieve_trajectory = Bool(True)`.
 
-## Structured inputs and restart (v0.3.0)
+## Structured inputs and restart (v0.3.0+)
 
 - ``N2p2Dataset`` / ``N2p2Parameters`` data types wrap ``input.data`` and
   ``input.nn`` with provenance-friendly metadata.
 - ``N2p2PrepareInputsWorkChain`` renders files for scaling/training.
 - ``N2p2TrainWorkChain`` merges learning curves across restarts; plot metadata
   includes one colour per run in ``learning_curve_plot_data``.
+- **v0.4.0:** ``auto_restart=True`` loops until target ``epochs`` are reached,
+  even when a CalcJob exits early (e.g. walltime). Requires parseable partial
+  outputs (``learning-curve.out`` + last weights). Scale/train parsers poll
+  remote folders when retrieve is premature (OAR on Dahu).
+- **Manual restart:** two ``N2p2TrainWorkChain`` submissions; segment~2 uses
+  ``additional_epochs`` as **remaining** epochs in ``input.nn``.
 
 ## Run
 

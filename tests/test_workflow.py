@@ -30,6 +30,17 @@ def test_scale_workchain_exposes_scaling_ports():
     for port in ('code', 'nbin', 'inputData', 'inputNN'):
         assert port in spec.inputs, f'Missing scaling input port: {port}'
     assert 'scale' in spec.outputs
+    assert 'metadata' in spec.inputs
+    assert 'options' in spec.inputs['metadata']
+
+
+def test_scale_and_train_workchains_accept_calcjob_metadata():
+    from aiida_n2p2.workflows.common import CalcJobMetadataWorkChainMixin
+    from aiida_n2p2.workflows.scale import N2p2ScaleWorkChain
+    from aiida_n2p2.workflows.train import N2p2TrainWorkChain
+
+    assert issubclass(N2p2ScaleWorkChain, CalcJobMetadataWorkChainMixin)
+    assert issubclass(N2p2TrainWorkChain, CalcJobMetadataWorkChainMixin)
 
 
 def test_train_workchain_exposes_training_ports():
@@ -108,3 +119,5 @@ def test_train_workchain_exposes_merged_outputs():
         assert port in spec.outputs, f'Missing training output port: {port}'
     assert 'previous_session' in spec.inputs
     assert 'is_restart' in spec.inputs
+    assert 'auto_restart' in spec.inputs
+    assert 'max_auto_restarts' in spec.inputs

@@ -1,34 +1,80 @@
-*.pyc
+# Python
+__pycache__/
+*.py[cod]
+*.egg*
 *.swo
 *.swp
 **/.ipynb_checkpoints/
 ~*
 *~
+
+# IDE / OS
 .project
-*.egg*
 .DS_Store
-.coverage
-.pytest_cache
 .vscode
+
+# Build / test tooling
 build/
 dist/
 pip-wheel-metadata/
 .tox/
-# Output di calcolo n2p2 / AiiDA
+.coverage
+.pytest_cache/
+
+# AiiDA node dumps and scheduler artifacts
 dump-*/
+**/.aiida_node_metadata.yaml
+**/.aiida/
+**/_aiidasubmit.sh
+**/_scheduler-*.txt
+
+# n2p2 run outputs (keep test fixtures — see exceptions below)
 *.out
 *.histo
 *.log
-*.data
-learning-curve*.out
 nnp-scaling.log.*
-# Regression test fixtures (keep golden reference files)
-!tests/fixtures/**/*.out
-!tests/fixtures/**/*.data
-!examples/3.Restart/input.data
-# Figure generate (opzionale)
+nnp-symfunc.log*
+learning-curve*.out
+weights.*.out
+sf.*.*
+neighbors.*
+function.data
+scaling.data
+*.lammpstrj
+
+# Office / editor lock files
+.~lock.*
+
+# Generated figures in examples
 examples/**/*.png
 examples/**/*.jpg
-# File locali da non versionare
+
+# Local helper scripts (not part of the plugin API)
 examples/1.Al/plot-symfuncs.py
-examples/1.Boron/
+
+# ---------------------------------------------------------------------------
+# Boron example: ship scripts + small inputs only (not local research data)
+# ---------------------------------------------------------------------------
+examples/1.Boron/analysis/
+examples/1.Boron/optimization/
+examples/1.Boron/output_*/
+examples/1.Boron/dump-*/
+examples/1.Boron/input.data
+examples/1.Boron/IN.data
+examples/1.Boron/weights.*
+examples/1.Boron/scaling.data
+examples/1.Boron/lammps_data_boron.data
+examples/1.Boron/n2p2_2_lammps.py
+
+# ---------------------------------------------------------------------------
+# Exceptions: files that must stay versioned despite patterns above
+# ---------------------------------------------------------------------------
+!tests/fixtures/**/*.out
+!tests/fixtures/**/*.data
+!examples/**/input.nn
+!examples/**/in.lmp
+!examples/**/222_IN.data
+!examples/3.Restart/input.data
+!examples/**/input.data
+# Re-ignore large Boron training set after the broad input.data exception
+examples/1.Boron/input.data

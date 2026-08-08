@@ -83,6 +83,11 @@ class nnpTraining(CalcJob):
             'ERROR_MISSING_OUTPUT_FILES',
             message='Calculation did not produce all expected output files.',
         )
+        spec.exit_code(
+            311,
+            'ERROR_INCOMPLETE_TRAINING',
+            message='Training stopped before reaching the target number of epochs.',
+        )
 
     def prepare_for_submission(self, folder: Folder) -> datastructures.CalcInfo:
         codeinfo = datastructures.CodeInfo()

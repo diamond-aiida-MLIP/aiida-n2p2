@@ -38,7 +38,7 @@ class N2p2Dataset(Data):
     def get_singlefile(self) -> SinglefileData:
         """Return the dataset as ``SinglefileData`` for CalcJobs."""
         with self.base.repository.open(self._FILENAME, 'rb') as handle:
-            return SinglefileData(file=handle)
+            return SinglefileData(file=handle, filename=self._FILENAME)
 
     def as_dict(self) -> dict:
         return {

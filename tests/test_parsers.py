@@ -38,6 +38,42 @@ def test_scale_parser_output_matches_reference(
     )
 
 
+def test_scale_parser_recovers_missing_output_from_remote(
+    scale_calcjob_node,
+    patch_parser_retrieved,
+    monkeypatch,
+    tmp_path,
+):
+    """If retrieve is premature, the parser should poll the remote folder."""
+    from aiida.orm import FolderData
+    from aiida_n2p2.parsers.scaling import nnpScaleParser
+
+    empty_retrieved_dir = tmp_path / 'empty_retrieved'
+    empty_retrieved_dir.mkdir()
+    (empty_retrieved_dir / 'scale.log').write_text('started\n', encoding='utf-8')
+    empty_retrieved = FolderData()
+    empty_retrieved.put_object_from_tree(str(empty_retrieved_dir))
+
+    recovered = FIXTURES_AL / 'scaling.data'
+
+    def _fake_fetch(node, filename, logger=None, **kwargs):
+        destination = tmp_path / filename
+        destination.write_bytes(recovered.read_bytes())
+        return destination
+
+    monkeypatch.setattr(
+        'aiida_n2p2.parsers.scaling.fetch_remote_output_file',
+        _fake_fetch,
+    )
+
+    parser = nnpScaleParser(scale_calcjob_node)
+    patch_parser_retrieved(parser, empty_retrieved)
+    result = parser.parse()
+
+    assert result.status == 0, f'Scale parser failed: {result.message}'
+    assert parser.outputs.scale.filename == 'scaling.data'
+
+
 def test_train_parser_selects_best_weights(
     train_calcjob_node,
     train_retrieved_folder,
@@ -70,3 +106,6 @@ def test_train_parser_selects_best_weights(
     summary = parser.outputs.training_summary.get_dict()
     assert summary['last_epoch'] == training['last_epoch']
     assert summary['best_epoch'] == training['best_epoch']
+    assert summary['target_epochs'] == 200
+    assert summary['training_completed'] is True
+    assert summary['epochs_remaining'] == 0

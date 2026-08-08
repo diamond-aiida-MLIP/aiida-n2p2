@@ -1,18 +1,24 @@
 """WorkChain for the n2p2 scaling step."""
 
 from aiida.engine import ToContext, WorkChain
+from aiida.orm import SinglefileData
 
 from aiida_n2p2.calculations.scaling import nnpScaling
+from aiida_n2p2.workflows.common import CalcJobMetadataWorkChainMixin
 
 
-class N2p2ScaleWorkChain(WorkChain):
+class N2p2ScaleWorkChain(CalcJobMetadataWorkChainMixin, WorkChain):
     """Run ``nnp-scaling`` and expose the resulting ``scaling.data`` file."""
 
     @classmethod
     def define(cls, spec):
         super().define(spec)
         spec.expose_inputs(nnpScaling)
-        spec.expose_outputs(nnpScaling)
+        spec.output(
+            'scale',
+            valid_type=SinglefileData,
+            help='Scaling data produced by ``nnp-scaling``.',
+        )
         spec.outline(cls.run_scaling, cls.inspect_scaling)
 
         spec.exit_code(

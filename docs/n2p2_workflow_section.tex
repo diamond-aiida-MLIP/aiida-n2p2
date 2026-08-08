@@ -31,13 +31,14 @@
 \section{n2p2 workflow}
 \label{sec:n2p2-workflow}
 
-The \texttt{aiida-n2p2} plugin (version~0.3.0) provides an AiiDA-native interface to the
+The \texttt{aiida-n2p2} plugin (version~0.4.0) provides an AiiDA-native interface to the
 n2p2 neural-network potential package.
 The workflow layer follows AiiDA best practices: each pipeline stage
 is exposed as an independent \texttt{WorkChain}, and a composite work chain orchestrates
 the full potential-building procedure.
-Version~0.3.0 adds structured input data types, a preparation work chain, training
-restart across multiple successful sessions, and merged learning-curve outputs.
+Version~0.4.0 adds automatic restart when a training CalcJob stops before reaching the
+target number of epochs (e.g.\ after scheduler walltime limits), while continuing to
+merge learning curves across segments.
 This section summarises the architecture, the workflow \emph{input API}, memory-conscious
 retrieval defaults, restart behaviour, and the regression test suite.
 
@@ -58,7 +59,7 @@ composed through \texttt{MakeNNPWorkchain}:
 
 \begin{table}[htbp]
   \centering
-  \caption{AiiDA workflow entry points registered by \texttt{aiida-n2p2} v0.3.0.}
+  \caption{AiiDA workflow entry points registered by \texttt{aiida-n2p2} v0.4.0.}
   \label{tab:n2p2-workflows}
   \begin{tabular}{lll}
     \toprule
@@ -267,6 +268,16 @@ test-set RMSE) and stores the corresponding weight file as \texttt{weights}.
 It also stores \texttt{last\_weights} from the final completed epoch, which serves
 as the restart checkpoint for the next training session.
 
+\paragraph{Remote output recovery (v0.4.0).}
+On some HPC schedulers (notably OAR on Dahu), the default retrieve step can copy
+incomplete output files before the executable finishes.
+The scale and train parsers therefore poll the remote folder when needed:
+\texttt{scaling.data} and \texttt{learning-curve.out} are read only after the file
+size stabilises; training may prefer remote weight files when the learning curve
+lags behind the last written checkpoint.
+This allows automatic restart to proceed even when a CalcJob exits with a non-zero
+scheduler status but parseable partial outputs exist.
+
 % ---------------------------------------------------------------------------
 \subsection{Structured inputs and restart (v0.3.0)}
 \label{subsec:v030-restart}
@@ -308,19 +319,79 @@ input_nn = params.get_singlefile()
 from these nodes (or from legacy \texttt{SinglefileData}), applying optional keyword
 overrides and restart preparation when \texttt{is\_restart = Bool(True)}.
 
-\subsubsection{Multi-session training restart}
+\subsubsection{Two restart modes compared}
+\label{subsubsec:restart-modes}
+
+Training can be continued in two ways.
+Both use the same CalcJob restart engine (\texttt{use\_old\_weights\_short},
+\texttt{weights.ZZZ.data}, merged learning curves), but differ in orchestration.
+
+\begin{table}[htbp]
+  \centering
+  \caption{Manual vs.\ automatic training restart in \texttt{N2p2TrainWorkChain}.}
+  \label{tab:restart-modes}
+  \begin{tabular}{lll}
+    \toprule
+    Aspect & Manual (v0.3) & Automatic (v0.4) \\
+    \midrule
+    Inputs & \texttt{is\_restart}, \texttt{previous\_session} & \texttt{auto\_restart}, \texttt{max\_auto\_restarts} \\
+    Who triggers next segment & User (new \texttt{submit}) & WorkChain (\texttt{while\_} loop) \\
+    Typical use & Deliberate multi-step training & HPC walltime limits \\
+    Prior segment status & Usually \texttt{finished\_ok} & May be failed (e.g.\ exit 143) \\
+    Parseable outputs required & Yes & Yes (\texttt{learning-curve.out}, \texttt{last\_weights}) \\
+    AiiDA provenance & N WorkChain nodes & 1 WorkChain, N CalcJob children \\
+    Extend \texttt{epochs} & \texttt{additional\_epochs} (remaining in segment) & Fixed target in \texttt{input.nn} \\
+    Example script & \texttt{restart\_train\_demo.py} & \texttt{auto\_restart\_train\_demo.py} \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+\paragraph{Manual restart (inter-workflow).}
+The user submits one WorkChain per session and links them with
+\texttt{previous\_session}.
+Each session is normally expected to finish successfully.
+This is appropriate when you deliberately split training (e.g.\ 40~+~40 epochs
+toward a target of~80) or when you want full control between steps.
+Each manual session is a separate \texttt{N2p2TrainWorkChain} submission.
+
+\paragraph{Automatic restart (intra-workflow).}
+The user submits \emph{once}.
+If a CalcJob stops before \texttt{epochs} is reached in \texttt{input.nn}
+(e.g.\ scheduler walltime) but the parser recovered
+\texttt{learning-curve.out} and checkpoint weights, the WorkChain submits
+another CalcJob automatically until the target is met or
+\texttt{max\_auto\_restarts} is exceeded.
+This is appropriate on HPC clusters with fixed job time limits.
+
+\paragraph{Output files and overwrite safety.}
+Each CalcJob segment runs in a \emph{new} remote folder (new AiiDA UUID).
+Segments do not overwrite each other's cluster files.
+Intermediate segments remain as child calculations in the provenance graph.
+The WorkChain output \texttt{learning\_curve\_merged} combines all segments;
+\texttt{weights} and \texttt{last\_weights} refer to the final segment.
+
+\subsubsection{Manual restart API}
+\label{subsubsec:manual-restart}
 
 \texttt{N2p2TrainWorkChain} accepts optional restart inputs:
 
 \begin{itemize}
   \item \texttt{is\_restart} (\texttt{Bool}): restart from a previous session;
-  \item \texttt{previous\_session} (\texttt{WorkChainNode}): prior
-        \texttt{N2p2TrainWorkChain} whose \texttt{last\_weights} are reused;
+  \item \texttt{previous\_session} (\texttt{WorkChainNode}, \texttt{non\_db=True}):
+        prior \texttt{N2p2TrainWorkChain} whose \texttt{last\_weights} are reused;
   \item \texttt{parameters} (\texttt{N2p2Parameters}): template used to regenerate
         \texttt{input.nn} with restart keywords;
-  \item \texttt{additional\_epochs} (\texttt{Int}): extend \texttt{epochs} when
-        preparing the restart \texttt{input.nn}.
+  \item \texttt{additional\_epochs} (\texttt{Int}): number of \emph{remaining}
+        epochs written into the restart segment's \texttt{input.nn} (not added to
+        the cumulative total in the file).
 \end{itemize}
+
+On manual restart the WorkChain sets \texttt{epochs} in the regenerated
+\texttt{input.nn} to \texttt{additional\_epochs} after enabling
+\texttt{use\_old\_weights\_short}.
+The global target for completion checks comes from \texttt{parameters} (e.g.\
+\texttt{epochs=80} while the first segment used~40).
+Automatic restart uses the same ``remaining epochs'' convention internally.
 
 On restart, the work chain copies \texttt{previous\_session.outputs.last\_weights}
 into the CalcJob sandbox as \texttt{weights.ZZZ.data}, sets \texttt{run\_label} to
@@ -328,7 +399,7 @@ the previous value plus one, and merges learning-curve segments into
 \texttt{learning\_curve\_merged} and \texttt{learning\_curve\_plot\_data}
 (one colour per run, global epoch axis).
 
-Example (two deliberate sessions, 20~+~20 epochs):
+Example (two deliberate sessions, 40~+~40 epochs toward target~80):
 \begin{lstlisting}
 from aiida.engine import run_get_node
 from aiida.orm import Bool, Int
@@ -337,25 +408,71 @@ from aiida.plugins import WorkflowFactory
 ScaleWC = WorkflowFactory("n2p2.scale")
 TrainWC = WorkflowFactory("n2p2.train")
 
+# Use examples/2.HPC/input.data and input.nn (Al dataset)
+params.set("epochs", "40")
 _, scaling = run_get_node(ScaleWC, ...)
-_, run1 = run_get_node(TrainWC, ...)
+_, run1 = run_get_node(TrainWC, ..., parameters=params)
 
+params_restart = params.clone()
+params_restart.set("epochs", "80")  # global target for WorkChain
 _, run2 = run_get_node(
     TrainWC,
     ...,
     is_restart=Bool(True),
     previous_session=run1,
-    parameters=params,
-    additional_epochs=Int(20),
+    parameters=params_restart,
+    additional_epochs=Int(40),  # remaining epochs in segment 2
 )
 merged = run2.outputs.learning_curve_plot_data.get_dict()
+assert merged["n_runs"] == 2
 \end{lstlisting}
 
-\paragraph{Scope.}
-This restart API assumes each session finishes successfully
-(\texttt{is\_finished\_ok}).
-Recovery after scheduler walltime limits (incomplete epochs) is a planned extension;
-see \texttt{examples/3.Restart/README.md} for the current interactive demo.
+\subsubsection{Automatic restart API (v0.4.0)}
+\label{subsubsec:auto-restart}
+
+Additional inputs:
+
+\begin{itemize}
+  \item \texttt{auto\_restart} (\texttt{Bool}): loop until target \texttt{epochs};
+  \item \texttt{max\_auto\_restarts} (\texttt{Int}): safety limit (default 10).
+\end{itemize}
+
+Set \texttt{max\_wallclock\_seconds} in CalcJob metadata so each segment is
+stopped by the scheduler before the target is reached.
+The train parser records \texttt{target\_epochs}, \texttt{training\_completed},
+and \texttt{epochs\_remaining} in \texttt{training\_summary}.
+
+\begin{lstlisting}
+from aiida.engine import run_get_node
+from aiida.orm import Bool, Int
+from aiida.plugins import WorkflowFactory
+
+TrainWC = WorkflowFactory("n2p2.train")
+
+_, node = run_get_node(
+    TrainWC,
+    ...,
+    parameters=params,
+    auto_restart=Bool(True),
+    max_auto_restarts=Int(10),
+    metadata=Dict(dict={
+        "options": {
+            "resources": {"num_machines": 1},
+            "max_wallclock_seconds": 7200,
+        }
+    }),
+)
+assert node.outputs.training_summary.get_dict()["training_completed"]
+assert node.outputs.learning_curve_plot_data.get_dict()["n_runs"] >= 2
+\end{lstlisting}
+
+Walltime is enforced by the cluster scheduler; on a plain local AiiDA computer
+the job may complete in one segment and automatic restart will not trigger.
+Use \texttt{examples/3.Restart/auto\_restart\_dahu.py} on Dahu/OAR
+(default \texttt{max\_wallclock\_seconds=360}, target~300 epochs) or
+\texttt{auto\_restart\_train\_demo.py} on other schedulers to verify
+end-to-end behaviour (\texttt{n\_runs >= 2} in \texttt{learning\_curve\_plot\_data}).
+Logic is also covered by unit tests without re-running n2p2.
 
 Template leftovers from the original plugin scaffold (\texttt{helpers.py},
 \texttt{cli.py}, unused \texttt{DiffParameters} data type) were removed.
@@ -391,7 +508,7 @@ runs that only check exit status can leave it at the default \texttt{False}.
 
 \subsection{Regression tests}
 
-A fast regression test suite (34 tests, ${\sim}5\,\mathrm{s}$) validates parser
+A fast regression test suite (48 tests, ${\sim}6\,\mathrm{s}$) validates parser
 logic, structured inputs, restart wiring, and learning-curve merging against golden
 outputs from a successful aluminium run
 (\texttt{MakeNNPWorkchain<949>}) without re-executing n2p2 or LAMMPS.
@@ -413,15 +530,25 @@ PYTHONPATH=. pytest -v
 
 \subsection{Updated examples}
 
-The following examples were migrated to the v0.2.0+ input API:
+The following examples reflect the v0.4.0 API:
 \begin{itemize}
   \item \texttt{examples/1.Al/AiidA-n2p2\_demo.ipynb} --- local Al demonstration
         notebook (with \texttt{retrieve\_trajectory = Bool(True)} for trajectory
         visualisation);
-  \item \texttt{examples/2.HPC/wkchain\_Al.py} --- full pipeline submission on HPC;
+  \item \texttt{examples/2.HPC/wkchain\_Al.py} --- full pipeline on HPC or
+        localhost (\texttt{N2P2\_COMPUTER}, code labels via environment variables);
   \item \texttt{examples/1.Boron/aiida-n2p2\_demo.py} --- boron example with
         \texttt{Int(5)} and \texttt{retrieve\_trajectory = Bool(False)};
-  \item \texttt{examples/3.Restart/restart\_train\_demo.py} --- minimal scale~+
-        two-session training restart (20~+~20 epochs, no LAMMPS); interactive
-        smoke test for v0.3.0 restart outputs and merged learning curves.
+  \item \texttt{examples/3.Restart/restart\_train\_demo.py} --- manual restart:
+        two WorkChain submits (default 40~+~40 epochs; Al inputs from
+        \texttt{examples/2.HPC/});
+  \item \texttt{examples/3.Restart/auto\_restart\_dahu.py} --- automatic restart
+        on Dahu/OAR (\texttt{pr-diamond}, configurable walltime per segment);
+  \item \texttt{examples/3.Restart/auto\_restart\_train\_demo.py} --- automatic
+        restart smoke test (any scheduler; localhost walltime may not trigger
+        multiple segments).
 \end{itemize}
+
+Restart examples require the full Al \texttt{input.data} from
+\texttt{examples/2.HPC/}; the minimal files under \texttt{examples/3.Restart/} are
+for unit tests only.

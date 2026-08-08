@@ -1,20 +1,17 @@
-"""Run the full n2p2 + LAMMPS pipeline for the Al example (MakeNNPWorkchain).
-
-Default: ``dahu_parallel`` with MPI and OAR project ``pr-diamond``.
+"""Run the n2p2 pipeline for Boron on HPC (MakeNNPWorkchain).
 
 Network settings (epochs, hidden layers, nodes, activation) are taken from
 ``input.nn`` in this directory and can be overridden without editing the file::
 
-    export N2P2_TARGET_EPOCHS=300
+    export N2P2_TARGET_EPOCHS=5000
     export N2P2_HIDDEN_LAYERS=2
-    export N2P2_NODES='5 5'
+    export N2P2_NODES='25 25'
     export N2P2_ACTIVATION='p p l'
 
 For a local smoke test::
 
     export N2P2_COMPUTER=localhost
-    export N2P2_OAR_PROJECT=pr-diamond   # ignored on localhost
-    python wkchain_Al.py
+    python aiida-n2p2_demo.py
 
 Override codes explicitly if needed::
 
@@ -29,7 +26,7 @@ import os
 from pathlib import Path
 
 from aiida import load_profile, orm
-from aiida.engine import submit
+from aiida.engine import run_get_node
 from aiida.orm import Bool, Dict, Int, SinglefileData
 from aiida.plugins import DataFactory, WorkflowFactory
 
@@ -93,8 +90,8 @@ if COMPUTER != 'localhost':
     print(f'OAR project: {OAR_PROJECT}')
 print(f'Input directory: {INPUT_DIR}')
 
-dataset = N2p2Dataset.from_file(INPUT_DIR / 'input.data', label='Al HPC dataset')
-parameters = N2p2Parameters.from_file(INPUT_DIR / 'input.nn', label='Al HPC nn')
+dataset = N2p2Dataset.from_file(INPUT_DIR / 'input.data', label='Boron dataset')
+parameters = N2p2Parameters.from_file(INPUT_DIR / 'input.nn', label='Boron nn')
 nn_overrides = _build_nn_overrides()
 keywords = _effective_keywords(parameters, nn_overrides)
 
@@ -110,7 +107,7 @@ dataset.store()
 parameters.store()
 
 nbin = Int(SCALE_NBIN)
-atomic_number = Int(13)
+atomic_number = Int(5)
 
 lammps_script = SinglefileData(file=INPUT_DIR / 'in.lmp')
 lammps_structure = SinglefileData(file=INPUT_DIR / '222_IN.data')
@@ -155,13 +152,13 @@ inputs = {
         'script': lammps_script,
         'structure': lammps_structure,
         'metadata': default_metadata,
-        'retrieve_trajectory': Bool(True),
+        'retrieve_trajectory': Bool(False),
     },
     'run_validation': Bool(RUN_VALIDATION),
 }
 
-print('Submitting MakeNNPWorkchain (prepare → scale → train → LAMMPS)...')
-node = submit(make_nnp, **inputs, wait=True, wait_interval=60)
+print('Running MakeNNPWorkchain (prepare → scale → train → LAMMPS)...')
+result, node = run_get_node(make_nnp, **inputs)
 print(f'Finished MakeNNPWorkchain<{node.pk}> status={node.exit_status}')
 if not node.is_finished_ok:
     raise SystemExit(node.exit_message)

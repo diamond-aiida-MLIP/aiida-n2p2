@@ -1,0 +1,138 @@
+#  etude du potentiel de Lennard-Jones TP nÂ°1
+
+units           metal
+atom_style      atomic
+
+variable        t_init equal 100
+variable        t_equil equal   3000
+#permet de faire une fusion en augmentant la température avant de la rabaisser
+variable        t_final equal   2400
+variable        P_equil equal   0  #P en Bar (0, 10GPa, 100, 300)
+variable        Simul equal 1  # 1: NVT (volume cst), 2: NPT (pression cst)
+variable        ts_equil equal 25000
+
+variable        dt equal 0.001 #1/1000 picosec
+
+
+lattice         fcc 3.21525 #hcp 3.994, bcc 3.116, fcc 3.993, paramètre en °A
+region          box block 0 9 0 9 0 9 #5 mailles dans chaque direction
+create_box      1 box
+create_atoms    1 box
+
+#read_data        Conf_Al_10976_liquid.data
+
+mass            1 10.81  
+
+variable        Tdamp equal $(0.1*0.001/dt)
+variable        Pdamp equal $(10*0.001/dt)
+
+
+timestep        ${dt}
+velocity        all create ${t_init} 87287
+#velocity        all create 100 87287
+
+###############################################################################
+# NN
+###############################################################################
+# Variables
+variable nnpCutoff       equal  5.3
+variable nnpDir          string "nnp-data"
+pair_style hdnnp ${nnpCutoff} dir ${nnpDir} showew no showewsum 100 resetew yes maxew 1000 cflength 1.0 cfenergy 1.0
+pair_coeff * * B 
+
+#pair_style      eam/alloy
+#pair_coeff      * * Al-2009.eam.alloy Al
+
+neighbor        0.6 bin
+neigh_modify    every 10 delay 0 check yes
+
+# thermalisation
+
+thermo_style    custom step temp pe etotal press vol
+thermo          10
+
+
+##################################################
+#
+#
+#couper ici et remplacer par
+# minimize 1.0e-8 1.0e-10 1000 10000
+#
+#######################################################""
+
+if "${Simul} == 1" then &
+        "fix             1 all nvt temp ${t_init} ${t_init} ${Tdamp}" &
+else &
+        "fix              1 all npt temp ${t_init} ${t_init} ${Tdamp} iso ${P_equil} ${P_equil} ${Pdamp}"
+run              100
+
+unfix           1
+if "${Simul} == 1" then &
+        "fix             1 all nvt temp ${t_init} ${t_equil} ${Tdamp}" &
+else &
+        "fix              1 all npt temp ${t_init} ${t_equil} ${Tdamp} iso ${P_equil} ${P_equil} ${Pdamp}"
+run             20000
+
+unfix           1
+if "${Simul} == 1" then &
+        "fix             1 all nvt temp ${t_equil} ${t_equil}  ${Tdamp}" &
+else &
+        "fix              1 all npt temp ${t_equil} ${t_equil} ${Tdamp} iso ${P_equil} ${P_equil} ${Pdamp}"
+run             10000
+
+unfix           1
+if "${Simul} == 1" then &
+        "fix             1 all nvt temp ${t_equil} ${t_final}  ${Tdamp}" &
+else &
+        "fix              1 all npt temp ${t_equil} ${t_final} ${Tdamp} iso ${P_equil} ${P_equil} ${Pdamp}"
+run             10000
+
+unfix           1
+if "${Simul} == 1" then &
+        "fix             1 all nvt temp ${t_final} ${t_final}  ${Tdamp}" &
+else &
+        "fix              1 all npt temp ${t_final} ${t_final} ${Tdamp} iso ${P_equil} ${P_equil} ${Pdamp}"
+
+variable        myvol equal  vol
+fix             myvolume all ave/time 10 1000 10000  v_myvol
+
+run             100000
+
+variable        box_length equal v_myvol^(1/3)
+change_box      all x final 0.0 ${box_length} y final 0.0 ${box_length} z  final 0.0 ${box_length} units box
+unfix           myvolume
+unfix           1
+
+fix             1 all nvt temp ${t_final} ${t_final} ${Tdamp}
+run             10000
+unfix           1
+# Production
+#
+
+reset_timestep  0
+
+fix             1 all nve 
+
+dump            2 all custom 5 dump.P${P_equil}.every5.xyz id type x y z vx vy vz fx fy fz
+
+dump            id all custom 100 dump.P${P_equil}.pos id type x y z
+
+compute         temperature all temp
+fix             mytemperature  all ave/time 10 1000 10000 c_temperature file temperature.dat
+
+compute         pot_energie all pe
+fix             mypot_energie  all ave/time 10 1000 10000 c_pot_energie file pot_energie.dat
+
+compute         pression all pressure thermo_temp
+fix             mypression all ave/time 10 1000 10000 c_pression file pression.dat
+
+variable        myvol equal  vol
+fix             myvolume all ave/time 10 1000 10000 v_myvol file volume.dat
+
+compute         msd1 all msd
+fix             msd2 all ave/time 10 1 10 c_msd1[4] file msd.dat
+
+compute         myRDF all rdf  150 1 1
+fix             myRDF1 all ave/time 10 1000 10000 c_myRDF[*] file rdf.dat mode vector
+
+run             100000 #nbre d'étapes temporelles
