@@ -60,6 +60,26 @@ Details: [`tests/README.md`](tests/README.md).
 - Workflow and restart API (LaTeX): [`docs/n2p2_workflow_section.tex`](docs/n2p2_workflow_section.tex)
 - Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 
+### Workflow overview
+
+Vertical layout (fits single-column pages; full TikZ figures in the LaTeX doc):
+
+```
+MakeNNPWorkchain
+        │
+        ▼
+  [Prepare inputs]     optional: N2p2Dataset + N2p2Parameters
+        │
+        ▼
+  [Scale]              nnp-scaling  →  scale
+        │
+        ▼
+  [Train]              nnp-train  →  weights, learning curve
+        │
+        ▼
+  [LAMMPS validate]    optional (run_validation=True)
+```
+
 ## Authors
 
 - **v0.1.0–v0.2.0:** [Akshay Krishna Ammothum Kandy](https://github.com/aksam432) — initial rudimentary plugin (CalcJobs, basic WorkChains, first examples).

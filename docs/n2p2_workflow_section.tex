@@ -5,6 +5,8 @@
 %   \usepackage{xcolor}
 %   \usepackage{booktabs}
 %   \usepackage{hyperref}
+%   \usepackage{tikz}
+%   \usetikzlibrary{arrows.meta, positioning}
 %
 %   \definecolor{codegreen}{rgb}{0,0.45,0.35}
 %   \definecolor{codegray}{rgb}{0.45,0.45,0.45}
@@ -55,7 +57,46 @@ The end-to-end pipeline consists of three physical steps:
 \end{enumerate}
 
 Each step is wrapped in a dedicated work chain and can be submitted independently or
-composed through \texttt{MakeNNPWorkchain}:
+composed through \texttt{MakeNNPWorkchain}.
+Figure~\ref{fig:make-nnp-flow} shows the vertical call order (single-column layout).
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+    node distance=0.5cm,
+    box/.style={
+      draw,
+      rounded corners=2pt,
+      align=center,
+      minimum width=0.92\linewidth,
+      inner sep=4pt,
+      font=\small
+    },
+    arrow/.style={-{Stealth[length=2mm]}, thick}
+  ]
+    \node[box] (prep) {%
+      Optional: \texttt{N2p2PrepareInputsWorkChain}\\[-1pt]
+      {\scriptsize\texttt{N2p2Dataset} + \texttt{N2p2Parameters} $\rightarrow$ files}};
+    \node[box, below=of prep] (scale) {%
+      \texttt{N2p2ScaleWorkChain} --- \texttt{nnp-scaling}\\[-1pt]
+      {\scriptsize outputs: \texttt{scale}}};
+    \node[box, below=of scale] (train) {%
+      \texttt{N2p2TrainWorkChain} --- \texttt{nnp-train}\\[-1pt]
+      {\scriptsize outputs: \texttt{weights}, \texttt{learning\_curve\_merged}}};
+    \node[box, below=of train] (val) {%
+      \texttt{N2p2LammpsValidationWorkChain} (if \texttt{run\_validation=True})\\[-1pt]
+      {\scriptsize LAMMPS MD with trained potential}};
+    \draw[arrow] (prep) -- (scale);
+    \draw[arrow] (scale) -- (train);
+    \draw[arrow] (train) -- (val);
+  \end{tikzpicture}
+  \caption{%
+    \texttt{MakeNNPWorkchain} pipeline in top-down order.
+    The prepare step runs when structured inputs or overrides are supplied;
+    scaling forwards \texttt{inputData}, \texttt{inputNN}, and \texttt{scale} to training;
+    validation is skipped when \texttt{run\_validation=False}.}
+  \label{fig:make-nnp-flow}
+\end{figure}
 
 \begin{table}[htbp]
   \centering
@@ -325,6 +366,39 @@ overrides and restart preparation when \texttt{is\_restart = Bool(True)}.
 Training can be continued in two ways.
 Both use the same CalcJob restart engine (\texttt{use\_old\_weights\_short},
 \texttt{weights.ZZZ.data}, merged learning curves), but differ in orchestration.
+Figure~\ref{fig:restart-flow} contrasts the two modes in vertical form.
+
+\begin{figure}[htbp]
+  \centering
+  \begin{tikzpicture}[
+    node distance=0.45cm,
+    col/.style={minimum width=0.44\linewidth},
+    box/.style={
+      draw,
+      rounded corners=2pt,
+      align=center,
+      minimum width=0.42\linewidth,
+      inner sep=3pt,
+      font=\footnotesize
+    },
+    arrow/.style={-{Stealth[length=1.8mm]}, thick}
+  ]
+    \node[col] (mh) {\textbf{Manual restart}};
+    \node[col, right=0.06\linewidth] (ah) {\textbf{Automatic restart}};
+    \node[box, below=0.35cm of mh] (m1) {Submit WC segment~1};
+    \node[box, below=of m1] (m2) {User submits WC segment~2\\ \scriptsize\texttt{previous\_session}};
+    \node[box, below=of m2] (m3) {Merged outputs\\ \scriptsize 2 WorkChain nodes};
+    \node[box, below=0.35cm of ah] (a1) {Single WC submit};
+    \node[box, below=of a1] (a2) {CalcJob segments in loop\\ \scriptsize walltime / incomplete};
+    \node[box, below=of a2] (a3) {Merged outputs\\ \scriptsize 1 WC, N CalcJobs};
+    \draw[arrow] (m1) -- (m2);
+    \draw[arrow] (m2) -- (m3);
+    \draw[arrow] (a1) -- (a2);
+    \draw[arrow] (a2) -- (a3);
+  \end{tikzpicture}
+  \caption{Manual vs.\ automatic training restart (compact two-column layout).}
+  \label{fig:restart-flow}
+\end{figure}
 
 \begin{table}[htbp]
   \centering
