@@ -12,6 +12,18 @@ AiiDA plugin for the [n2p2](https://github.com/CompPhysVienna/n2p2) neural-netwo
 - **Training restart (v0.4.0):** automatic relaunch when walltime stops training before target `epochs`; merged learning curves across segments
 - **HPC / OAR:** parsers recover outputs from the remote folder when retrieve is premature (Dahu)
 
+## Prerequisites
+
+`pip install -e .` installs the plugin and its Python dependencies (`aiida-core`, `aiida-lammps`, `numpy`) into the environment that is already active. It does not create that environment, an AiiDA profile, or the external executables.
+
+Before the install commands:
+
+- Python 3.10 or newer. With `pip`, activate a virtual environment first (conda or venv). `poetry install` creates its own virtualenv.
+- PostgreSQL and RabbitMQ running.
+- An AiiDA profile, created with `verdi quicksetup` or `verdi setup`, so that `verdi` already works.
+- The n2p2 executables `nnp-scaling`, `nnp-train`, and `nnp-predict` installed on the computer where the calculations run.
+- LAMMPS, when the optional validation step is used.
+
 ## Installation
 
 ```bash
