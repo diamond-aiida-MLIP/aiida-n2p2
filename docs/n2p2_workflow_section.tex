@@ -402,22 +402,40 @@ Figure~\ref{fig:restart-flow} contrasts the two modes in vertical form.
 
 \begin{table}[htbp]
   \centering
+  \small
+  \setlength{\tabcolsep}{4pt}
   \caption{Manual vs.\ automatic training restart in \texttt{N2p2TrainWorkChain}.}
   \label{tab:restart-modes}
-  \begin{tabular}{lll}
+  \begin{tabularx}{\linewidth}{@{}>{\raggedright\arraybackslash}p{0.19\linewidth} >{\raggedright\arraybackslash}X >{\raggedright\arraybackslash}X@{}}
     \toprule
     Aspect & Manual (v0.3) & Automatic (v0.4) \\
     \midrule
-    Inputs & \texttt{is\_restart}, \texttt{previous\_session} & \texttt{auto\_restart}, \texttt{max\_auto\_restarts} \\
-    Who triggers next segment & User (new \texttt{submit}) & WorkChain (\texttt{while\_} loop) \\
-    Typical use & Deliberate multi-step training & HPC walltime limits \\
-    Prior segment status & Usually \texttt{finished\_ok} & May be failed (e.g.\ exit 143) \\
-    Parseable outputs required & Yes & Yes (\texttt{learning-curve.out}, \texttt{last\_weights}) \\
-    AiiDA provenance & N WorkChain nodes & 1 WorkChain, N CalcJob children \\
-    Extend \texttt{epochs} & \texttt{additional\_epochs} (remaining in segment) & Fixed target in \texttt{input.nn} \\
-    Example script & \texttt{restart\_train\_demo.py} & \texttt{auto\_restart\_train\_demo.py} \\
+    Inputs &
+      \texttt{is\_restart}, \texttt{previous\_session} &
+      \texttt{auto\_restart}, \texttt{max\_auto\_restarts} \\
+    Who triggers next segment &
+      User (new \texttt{submit}) &
+      WorkChain (\texttt{while\_} loop) \\
+    Typical use &
+      Deliberate multi-step training &
+      HPC walltime limits \\
+    Prior segment status &
+      Usually \texttt{finished\_ok} &
+      May be failed (e.g.\ exit 143) \\
+    Parseable outputs required &
+      Yes &
+      Yes (\texttt{learning-curve.out}, \texttt{last\_weights}) \\
+    AiiDA provenance &
+      N WorkChain nodes &
+      1 WorkChain, N CalcJob children \\
+    Extend \texttt{epochs} &
+      \texttt{additional\_epochs} (remaining in segment) &
+      Fixed target in \texttt{input.nn} \\
+    Example script &
+      \texttt{restart\_train\_demo.py} &
+      \texttt{auto\_restart\_train\_demo.py} \\
     \bottomrule
-  \end{tabular}
+  \end{tabularx}
 \end{table}
 
 \paragraph{Manual restart (inter-workflow).}
