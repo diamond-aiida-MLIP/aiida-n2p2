@@ -69,7 +69,9 @@ Details: [`tests/README.md`](tests/README.md).
 
 ## Documentation
 
-- Workflow and restart API (LaTeX): [`docs/n2p2_workflow_section.tex`](docs/n2p2_workflow_section.tex)
+- Workflow and restart API (PDF): [`docs/aiida-n2p2-workflow.pdf`](docs/aiida-n2p2-workflow.pdf)
+- LaTeX sources: [`docs/aiida-n2p2-workflow.tex`](docs/aiida-n2p2-workflow.tex) (standalone),
+  [`docs/n2p2_workflow_section.tex`](docs/n2p2_workflow_section.tex) (section for larger documents)
 - Changelog: [`CHANGELOG.md`](CHANGELOG.md)
 
 ### Workflow overview

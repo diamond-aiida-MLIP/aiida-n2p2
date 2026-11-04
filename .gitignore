@@ -45,6 +45,15 @@ scaling.data
 # Office / editor lock files
 .~lock.*
 
+# LaTeX build artifacts (PDF and .tex sources are versioned)
+docs/*.aux
+docs/*.fdb_latexmk
+docs/*.fls
+docs/*.log
+docs/*.out
+docs/*.toc
+docs/*.synctex.gz
+
 # Generated figures in examples
 examples/**/*.png
 examples/**/*.jpg
